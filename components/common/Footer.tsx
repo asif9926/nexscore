@@ -53,14 +53,14 @@ export default function Footer() {
                 <Code2 size={14} className="text-electric" />
                 <span>Engineered & Maintained by</span>
                 <span className="font-bold text-fg group-hover:text-electric underline decoration-border underline-offset-2">
-                  Tahmid
+                  Asif
                 </span>
                 <ArrowUpRight size={13} className="opacity-70 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </Link>
               
               {/* WhatsApp Contact Button */}
               <a
-                href="https://wa.me/8801XXXXXXXXX" // <-- আপনার আসল WhatsApp নাম্বার বসিয়ে দিন
+                href="https://wa.me/8801710256453" // <-- আপনার আসল WhatsApp নাম্বার বসিয়ে দিন
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group flex items-center gap-2 rounded-full border border-[#25D366]/20 bg-[#25D366]/10 px-4 py-1.5 text-xs font-bold text-[#25D366] transition-all hover:bg-[#25D366]/20 hover:text-white shadow-sm"

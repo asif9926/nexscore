@@ -1,7 +1,6 @@
 "use server";
 
 import { adminFirestore, getAdminApp } from "@/lib/firebase/admin";
-import { getAuth } from "firebase-admin/auth";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
@@ -33,6 +32,8 @@ export async function deleteMatchAction(id: string) {
       throw new Error("Unauthorized");
     }
 
+    // Dynamic import to prevent bundling conflict on server actions
+    const { getAuth } = await import("firebase-admin/auth");
     const authAdmin = getAuth(getAdminApp());
     await authAdmin.verifySessionCookie(sessionCookie, true);
 

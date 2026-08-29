@@ -89,7 +89,7 @@ export default function AboutDeveloperPage() {
 
           <div className="flex flex-col items-center gap-6 text-center md:flex-row md:items-start md:text-left">
             <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-electric via-blue-700 to-indigo-800 font-broadcast text-4xl font-black text-white shadow-xl shadow-electric/25">
-              <span>A</span>
+              <span>A.H</span>
               <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-panel bg-pitch-green text-ink">
                 <Sparkles size={12} />
               </span>
@@ -103,7 +103,7 @@ export default function AboutDeveloperPage() {
 
               <div>
                 <h1 className="text-2xl font-black tracking-tight text-fg sm:text-4xl">
-                  Tahmid
+                  Asif ul Haque
                 </h1>
                 <p className="font-mono text-xs font-semibold text-electric sm:text-sm">
                   Full-Stack Software Engineer & UI/UX Architect
@@ -116,7 +116,7 @@ export default function AboutDeveloperPage() {
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2 md:justify-start">
                 <a
-                  href="https://wa.me/8801XXXXXXXXX" // <-- আপনার আসল WhatsApp নাম্বার দিন
+                  href="https://wa.me/8801710256453" // <-- আপনার আসল WhatsApp নাম্বার দিন
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex min-h-[42px] items-center gap-2 rounded-full border border-[#25D366]/40 bg-[#25D366]/15 px-5 py-2 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/25 hover:text-white"
@@ -126,7 +126,7 @@ export default function AboutDeveloperPage() {
                 </a>
 
                 <a
-                  href="mailto:contact@yourdomain.com" // <-- আপনার ইমেইল দিন
+                  href="mailto:asif992088@gmail.com" // <-- আপনার ইমেইল দিন
                   className="flex min-h-[42px] items-center gap-2 rounded-full border border-border bg-ink px-5 py-2 text-xs font-bold text-fg-muted transition-all hover:border-fg-faint hover:text-fg"
                 >
                   <Mail size={15} className="text-electric" />
