@@ -1,0 +1,141 @@
+@import "tailwindcss";
+/* Fonts are loaded via next/font/google in app/layout.tsx (self-hosted,
+   no render-blocking network request) — that file sets --font-space-grotesk,
+   --font-anton and --font-rajdhani on <html>. We just reference them below. */
+
+/* ============================================================
+   NexScore Design Tokens — "Floodlight Broadcast"
+   See NexScore-Design-System.md for the full rationale.
+   Change values here, never hardcode a new color in a component.
+   ============================================================ */
+:root {
+  /* Surfaces */
+  --ink: #06080F;
+  --panel: #101522;
+  --panel-raised: #161C2C;
+
+  /* Semantic accents — each color has exactly one job, don't mix */
+  --electric: #2E8FFF;      /* primary / FOUR / links / active state */
+  --signal-gold: #FFB800;   /* SIX / target / captain / "hot" stat   */
+  --pitch-green: #17C980;   /* GOAL / positive / success             */
+  --crimson: #FF3B4E;       /* WICKET / red card / danger / undo     */
+
+  /* Text & borders */
+  --fg: #EAEDF5;
+  --fg-muted: #8A92A6;
+  --fg-faint: #545C70;
+  --border: #1E2536;
+
+  /* Legacy aliases kept so existing components don't break during migration */
+  --background: var(--ink);
+  --foreground: var(--fg);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-electric: var(--electric);
+  --color-signal-gold: var(--signal-gold);
+  --color-pitch-green: var(--pitch-green);
+  --color-crimson: var(--crimson);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-border: var(--border);
+
+  --font-score: var(--font-anton), sans-serif;
+  --font-ui: var(--font-space-grotesk), sans-serif;
+  --font-broadcast: var(--font-rajdhani), sans-serif;
+  --font-sans: var(--font-ui);
+}
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  position: relative;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-ui), Arial, Helvetica, sans-serif;
+}
+
+/* Score digits — the one signature typographic moment. Use only for the
+   actual live score number (e.g. 127/4, 2 - 1), nowhere else. */
+.font-score {
+  font-family: var(--font-score);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.font-broadcast {
+  font-family: var(--font-broadcast);
+  letter-spacing: 0.05em;
+}
+
+/* Signature shape — angular broadcast-chyron cut. Reserve for the score
+   bar / live badge / event popup only. Everything else stays rounded. */
+.chyron {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.chyron-left {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+
+/* Glass utilities kept for surfaces that genuinely float over live video
+   (OBS overlay chrome, sticky nav). Do not use on solid page panels —
+   use bg-panel / border-border instead. */
+.glass-panel {
+  background: rgba(16, 21, 34, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+}
+
+.glass-panel:hover {
+  background: rgba(16, 21, 34, 0.7);
+  border-color: var(--fg-faint);
+}
+
+.glass-pill {
+  background: rgba(16, 21, 34, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+/* OBS Overlay Specific Styles */
+/* app/globals.css এর শেষে যুক্ত করুন */
+
+/* OBS Hardware Acceleration & Zero-Scrollbar */
+.chyron, .chyron-left {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Hide scrollbars across OBS browser sources */
+::-webkit-scrollbar {
+  display: none !important;
+}
+
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Respect reduced-motion preference site-wide */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
