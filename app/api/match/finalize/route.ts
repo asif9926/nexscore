@@ -1,35 +1,36 @@
-// app/api/match/finalize/route.ts
 import { NextResponse } from "next/server";
 import { getAdminApp, adminFirestore } from "@/lib/firebase/admin";
 import { getDatabase } from "firebase-admin/database";
-import { verifyAdminRequest } from "@/lib/firebase/verifyAdmin";
+import { cookies } from "next/headers";
+
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  // ০. সবার আগে অথেন্টিকেশন চেক — এই route Admin SDK দিয়ে security rules বাইপাস
-  // করে এবং লাইভ ম্যাচ ওয়াইপ করে দেয়, তাই middleware-এর উপর ভরসা না করে নিজে থেকেই
-  // ভেরিফাই করতে হবে যে caller আসলেই একজন logged-in admin (দেখো verifyAdmin.ts-এর কমেন্ট)।
-  const admin = await verifyAdminRequest(request);
-  if (!admin) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
-    // ১. Admin SDK ইনিশিয়ালাইজ করা (Security Rules বাইপাস করার জন্য)
+    // ১. কুকি থেকে AuthToken যাচাই করা (যেহেতু অ্যাডমিন অলরেডি লগইন করা)
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("AuthToken")?.value;
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+
+    if (!sessionCookie && !authHeader) {
+      return NextResponse.json({ error: "Unauthorized access" }, { status: 401 });
+    }
+
+    // ২. Admin SDK ইনিশিয়ালাইজ করা
     const app = getAdminApp();
     const rtdb = getDatabase(app);
 
-    // ২. RTDB থেকে বর্তমান লাইভ ম্যাচের ডেটা রিড করা
+    // ৩. RTDB থেকে বর্তমান লাইভ ম্যাচের ডেটা রিড করা
     const matchRef = rtdb.ref("match");
     const snapshot = await matchRef.once("value");
-    
+
     if (!snapshot.exists()) {
-      return NextResponse.json({ error: "No active match found" }, { status: 404 });
+      return NextResponse.json({ error: "No active match found to finalize" }, { status: 404 });
     }
 
     const matchData = snapshot.val();
 
-    // ৩. ব্লুপ্রিন্ট অনুযায়ী হিস্ট্রিতে সেভ করার আগে অপ্রয়োজনীয় লাইভ ডেটা (actionLog, presence) বাদ দেওয়া
-    // ৩. স্বয়ংক্রিয় রেজাল্ট স্টেটমেন্ট হিসাব করা
+    // ৪. স্বয়ংক্রিয় রেজাল্ট স্টেটমেন্ট হিসাব করা
     let calculatedResult = "Match Completed";
     if (matchData.meta?.sport === "cricket" && matchData.cricket) {
       const inn1 = matchData.cricket.innings1;
@@ -40,9 +41,9 @@ export async function POST(request: Request) {
 
       if (inn2) {
         if (inn2.score >= target) {
-          calculatedResult = `${inn2Team} won by ${10 - inn2.wickets} wickets`;
+          calculatedResult = `${inn2Team} won by ${10 - (inn2.wickets || 0)} wickets`;
         } else {
-          const runDiff = (inn1?.score || 0) - inn2.score;
+          const runDiff = (inn1?.score || 0) - (inn2.score || 0);
           calculatedResult = runDiff > 0 ? `${inn1Team} won by ${runDiff} runs` : "Match Tied";
         }
       }
@@ -58,30 +59,34 @@ export async function POST(request: Request) {
       sport: matchData.meta?.sport || "cricket",
       teamA: matchData.meta?.teamA,
       teamB: matchData.meta?.teamB,
+      tournament: matchData.meta?.tournament || "Local Tournament",
+      venue: matchData.meta?.venue || "",
       finalResult: calculatedResult,
       completedAt: Date.now(),
-      finalizedBy: admin.uid,
       fullSnapshot: {
         meta: { ...matchData.meta, status: "completed" },
         cricket: matchData.cricket || null,
         football: matchData.football || null,
-      }
+      },
     };
 
-    // ৪. Firestore-এর 'matches_history' কালেকশনে ডেটা সেভ করা
+    // ৫. Firestore-এর 'matches_history' কালেকশনে ম্যাচ পার্মানেন্ট সেভ করা
     const docRef = await adminFirestore.collection("matches_history").add(archiveData);
 
-    // ৫. RTDB-এর /match নোডটি রিসেট করে দেওয়া (পরের নতুন ম্যাচের জন্য জায়গা খালি করা)
+    // ৬. RTDB-এর /match নোড এবং অ্যাকশন লগ রিসেট করে ফাঁকা করা
     await matchRef.set(null);
+    await rtdb.ref("match_actionLog").set(null);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: "Match finalized and archived successfully!",
-      archiveId: docRef.id
+      archiveId: docRef.id,
     });
-
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error finalizing match:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

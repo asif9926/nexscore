@@ -185,22 +185,22 @@ const handleAutoFillSquad = (team: "A" | "B") => {
     setLoading(true);
     try {
       const matchState: any = {
-        meta: {
-          sport: setupData.sport,
-          status: "live",
-          teamA: setupData.teamA.trim(),
-          teamB: setupData.teamB.trim(),
-          tournament: setupData.tournament.trim() || "Local Tournament",
-          venue: setupData.venue.trim() || "",
-          activeTheme: setupData.sport === "football" ? "premier" : "sky",
-          activeGraphic: "LOWER_THIRD",
-          showScoreboard: true,
-          showLogo: false,
-          currentEvent: null,
-          updatedAt: Date.now(),
-        },
-        presence: { admins: {}, lastPing: Date.now() },
-      };
+  meta: {
+    sport: setupData.sport,
+    status: "live",
+    teamA: setupData.teamA.trim(),
+    teamB: setupData.teamB.trim(),
+    tournament: setupData.tournament.trim() || "Local Tournament",
+    venue: setupData.venue.trim() || "",
+    activeTheme: setupData.sport === "football" ? "premier" : "sky",
+    activeGraphic: "LOWER_THIRD",
+    showScoreboard: true,
+    showLogo: false,
+    currentEvent: null,
+    updatedAt: Date.now(),
+  },
+  presence: { admins: {}, lastPing: Date.now() },
+};
 
       if (isCricket) {
         const striker = battingSquad.find((p) => p.id === setupData.openers.striker);
