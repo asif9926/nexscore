@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { useState, useEffect } from "react";
+import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, Eye, EyeOff, MessageCircle, ShieldAlert, Sparkles } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff, MessageCircle, ShieldAlert, Sparkles, Loader2 } from "lucide-react";
 import Navbar from "@/components/common/Navbar";
 import Footer from "@/components/common/Footer";
 
@@ -14,7 +14,20 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const router = useRouter();
+
+  // অলরেডি লগইন থাকলে সরাসরি অ্যাডমিন প্যানেলে নিয়ে যাবে
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        router.replace("/admin");
+      } else {
+        setCheckingAuth(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,15 +35,9 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // ১. Firebase Auth দিয়ে ক্লায়েন্ট সাইন-ইন
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
       const idToken = await userCredential.user.getIdToken(true);
 
-      if (!idToken) {
-        throw new Error("Failed to retrieve ID Token from Firebase.");
-      }
-
-      // ২. Body এবং Header উভয় মাধ্যমে টোকেন পাঠানো
       const res = await fetch("/api/login", {
         method: "POST",
         headers: {
@@ -48,21 +55,20 @@ export default function LoginPage() {
       } else {
         setError(data?.error || "Failed to secure session. Please try again.");
       }
-    } catch (err: any) {
-      console.error("Login Error:", err);
-      if (
-        err.code === "auth/invalid-credential" ||
-        err.code === "auth/user-not-found" ||
-        err.code === "auth/wrong-password"
-      ) {
-        setError("Invalid email address or password.");
-      } else {
-        setError(err.message || "Authentication failed. Please try again.");
-      }
+    } catch {
+      setError("Invalid email address or password.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-ink text-fg">
+        <Loader2 className="h-8 w-8 animate-spin text-electric" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-ink text-fg selection:bg-electric/30">
@@ -153,7 +159,7 @@ export default function LoginPage() {
                 </p>
                 <div className="mt-3 flex justify-center">
                   <a
-                    href="https://wa.me/8801XXXXXXXXX"
+                    href="https://wa.me/8801710256453"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group inline-flex items-center gap-2 rounded-full border border-[#25D366]/30 bg-[#25D366]/10 px-4 py-2 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"

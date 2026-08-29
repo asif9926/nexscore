@@ -1,6 +1,5 @@
-// lib/firebase/client.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
@@ -13,10 +12,15 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Next.js-এ multiple initialization এড়ানোর জন্য Singleton pattern
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-
 const auth = getAuth(app);
 const rtdb = getDatabase(app);
+
+// সেশন লোকাল স্টোরেজে স্থায়ী রাখা
+if (typeof window !== "undefined") {
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.error("Firebase persistence error:", err);
+  });
+}
 
 export { app, auth, rtdb };
