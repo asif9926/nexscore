@@ -1,19 +1,22 @@
+// components/admin/OverlayLinksCard.tsx
 "use client";
 
 import { useState } from "react";
-import { Link2, Copy, Check, ExternalLink } from "lucide-react";
+import { Link2, Copy, Check, ExternalLink, Sparkles } from "lucide-react";
 
 interface Props {
-  sport: "cricket" | "football";
+  sport?: "cricket" | "football";
   theme?: string;
 }
 
-export default function OverlayLinksCard({ sport, theme }: Props) {
+export default function OverlayLinksCard({ sport = "cricket", theme }: Props) {
   const [copied, setCopied] = useState(false);
-  
+
   const defaultTheme = sport === "football" ? "premier" : "sky";
   const activeTheme = theme || defaultTheme;
-  const path = `/overlay/${sport}/${activeTheme}`;
+
+  // স্পোর্ট অনুযায়ী ডাইনামিক রুট (/overlay/cricket অথবা /overlay/football)
+  const path = `/overlay/${sport}`;
   const fullUrl = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
 
   const handleCopy = async () => {
@@ -27,19 +30,21 @@ export default function OverlayLinksCard({ sport, theme }: Props) {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-panel p-5 shadow-xl">
+    <div className="rounded-2xl border border-border bg-panel p-4 shadow-xl sm:p-5">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fg-faint">
-          <Link2 size={14} /> OBS Overlay Browser Link
+          <Link2 size={14} className="text-electric" /> OBS Overlay Link ({sport.toUpperCase()})
         </h3>
-        <span className="rounded-md border border-electric/30 bg-electric/10 px-2 py-0.5 font-mono text-[10px] font-bold text-electric">
-          THEME: {activeTheme}
+        <span className="flex items-center gap-1 rounded-md border border-electric/30 bg-electric/10 px-2 py-0.5 font-mono text-[10px] font-bold text-electric">
+          <Sparkles size={11} className="text-signal-gold" /> THEME: {activeTheme.toUpperCase()}
         </span>
       </div>
-      <p className="mb-3 text-xs text-fg-muted">এই লিংকটি OBS Studio-র Browser Source-এ পেস্ট করুন</p>
+      <p className="mb-3 text-xs text-fg-muted">
+        OBS Studio-র Browser Source-এ এই লিংকটি অ্যাড করুন। অ্যাডমিন ড্যাশবোর্ড থেকে থিম পরিবর্তন করলে OBS-এ সাথে সাথে থিম আপডেট হবে।
+      </p>
 
       <div className="flex items-center gap-2 rounded-xl border border-border bg-ink p-3">
-        <code className="flex-1 truncate font-mono text-xs text-electric">{fullUrl}</code>
+        <code className="flex-1 truncate font-mono text-xs font-bold text-electric">{fullUrl}</code>
         <button
           onClick={handleCopy}
           className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
