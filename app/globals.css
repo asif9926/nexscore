@@ -8,25 +8,34 @@
    See NexScore-Design-System.md for the full rationale.
    Change values here, never hardcode a new color in a component.
    ============================================================ */
+/* app/globals.css */
+
 :root {
-  /* Surfaces */
+  /* Default Dark / Floodlight Tokens */
   --ink: #06080F;
   --panel: #101522;
   --panel-raised: #161C2C;
-
-  /* Semantic accents — each color has exactly one job, don't mix */
-  --electric: #2E8FFF;      /* primary / FOUR / links / active state */
-  --signal-gold: #FFB800;   /* SIX / target / captain / "hot" stat   */
-  --pitch-green: #17C980;   /* GOAL / positive / success             */
-  --crimson: #FF3B4E;       /* WICKET / red card / danger / undo     */
-
-  /* Text & borders */
+  --electric: #2E8FFF;
+  --signal-gold: #FFB800;
+  --pitch-green: #17C980;
+  --crimson: #FF3B4E;
   --fg: #EAEDF5;
   --fg-muted: #8A92A6;
   --fg-faint: #545C70;
   --border: #1E2536;
+  --background: var(--ink);
+  --foreground: var(--fg);
+}
 
-  /* Legacy aliases kept so existing components don't break during migration */
+/* ☀️ HIGH-CONTRAST SUNLIGHT / OUTDOOR SCORING MODE */
+.sunlight {
+  --ink: #F1F5F9;          /* Crisp light-grey outdoor surface */
+  --panel: #FFFFFF;        /* Pure white cards with zero glare */
+  --panel-raised: #E2E8F0; /* Soft contrast raised surfaces */
+  --fg: #050811;           /* Deep black text for 100% sunlight legibility */
+  --fg-muted: #334155;     /* High contrast sub-labels */
+  --fg-faint: #64748B;     /* Crisp secondary borders & labels */
+  --border: #CBD5E1;       /* Sharp border definition under direct sun */
   --background: var(--ink);
   --foreground: var(--fg);
 }

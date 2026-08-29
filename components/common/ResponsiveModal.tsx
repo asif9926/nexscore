@@ -14,7 +14,6 @@ const accentStyles: Record<Accent, { header: string; title: string; icon: string
   neutral: { header: "bg-panel-raised border-border", title: "text-fg", icon: "text-fg-muted" },
 };
 
-/** True below the `sm` breakpoint. Drives which entrance animation + shape we use. */
 function useIsMobile(breakpointPx = 640) {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -32,22 +31,11 @@ interface ResponsiveModalProps {
   onClose: () => void;
   title: string;
   icon?: ReactNode;
-  /** Ties the modal's accent color to what it represents — Wicket = crimson, etc. */
   accent?: Accent;
-  /** Scrollable body content. Keep this the only thing that scrolls. */
   children: ReactNode;
-  /** Always-visible action row. Never put the confirm button inside `children`. */
   footer: ReactNode;
 }
 
-/**
- * Renders as a bottom sheet on mobile (slides up, rounded top corners, drag
- * handle) and a centered dialog on desktop. In both cases the header and
- * footer are fixed and only the body scrolls, so the confirm button can
- * never be pushed off-screen — this is the fix for the modal overflow bug
- * found in the original WicketModal / InningsBreakModal / ExtrasModal /
- * NewBowlerModal (no max-height + no internal scroll on tall content).
- */
 export default function ResponsiveModal({
   isOpen,
   onClose,
@@ -76,8 +64,13 @@ export default function ResponsiveModal({
 
   return (
     <AnimatePresence>
+      {/* 
+        ✅ OPTION 1 FIX:
+        'backdrop-blur-sm' মুছে দেওয়া হয়েছে এবং ওভারলে হালকা (bg-black/35) করা হয়েছে।
+        মডাল ওপেন থাকা অবস্থাতেও পেছনের পুরো লাইভ স্কোরকার্ড ১০০% ক্লিয়ার থাকবে।
+      */}
       <div
-        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/35"
         onClick={onClose}
       >
         <motion.div
@@ -90,12 +83,12 @@ export default function ResponsiveModal({
                      bg-panel shadow-2xl sm:max-w-md sm:rounded-2xl
                      max-h-[85vh] sm:max-h-[90vh]"
         >
-          {/* Drag handle — mobile only, signals "this is a sheet, swipe/scroll" */}
+          {/* Mobile Drag Handle */}
           <div className="flex shrink-0 justify-center pb-1 pt-2.5 sm:hidden">
             <div className="h-1.5 w-10 rounded-full bg-fg-faint/40" />
           </div>
 
-          {/* Header — fixed */}
+          {/* Fixed Header */}
           <div className={`flex shrink-0 items-center justify-between border-b p-4 ${a.header}`}>
             <h3 className={`flex items-center gap-2 text-lg font-bold sm:text-xl ${a.title}`}>
               {icon && <span className={a.icon}>{icon}</span>}
@@ -110,10 +103,10 @@ export default function ResponsiveModal({
             </button>
           </div>
 
-          {/* Body — the only scrollable region */}
-          <div className="flex-1 space-y-6 overflow-y-auto p-6">{children}</div>
+          {/* Scrollable Body */}
+          <div className="flex-1 space-y-5 overflow-y-auto p-5">{children}</div>
 
-          {/* Footer — fixed, always reachable */}
+          {/* Fixed Footer */}
           <div className="shrink-0 border-t border-border bg-panel-raised/60 p-4">{footer}</div>
         </motion.div>
       </div>
