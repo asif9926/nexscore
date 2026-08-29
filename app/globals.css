@@ -148,3 +148,23 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* 🔒 OBS OVERLAY ABSOLUTE COLOR LOCK */
+[data-overlay-root],
+[data-overlay-root] * {
+  --ink: #06080F !important;
+  --panel: #101522 !important;
+  --panel-raised: #161C2C !important;
+  --fg: #EAEDF5 !important;
+  --fg-muted: #8A92A6 !important;
+  --fg-faint: #545C70 !important;
+  --border: #1E2536 !important;
+}
+
+/* GPU Hardware Acceleration for buttery-smooth 60 FPS in OBS */
+[data-overlay-root] {
+  backface-visibility: hidden;
+  perspective: 1000px;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+}

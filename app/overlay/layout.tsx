@@ -1,17 +1,29 @@
-// app/overlay/layout.tsx
-import { ReactNode } from "react";
+"use client";
+
+import { ReactNode, useEffect } from "react";
 
 export default function OverlayLayout({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    // 🛡️ OVERLAY ISOLATION GUARD:
+    // সাইটে সানলাইট/লাইট মোড সক্রিয় থাকলেও ওভারলে থেকে তা জোরপূর্বক রিমুভ করে ডার্ক ব্রডকাস্ট লক করবে
+    document.documentElement.classList.remove("sunlight");
+    document.documentElement.style.backgroundColor = "transparent";
+    document.body.style.backgroundColor = "transparent";
+
+    return () => {
+      // ওভারলে ট্যাব বন্ধ হলে আগের সেভ করা থিম পুনরুদ্ধার করবে
+      const savedMode = localStorage.getItem("nexscore_sunlight") === "true";
+      if (savedMode) {
+        document.documentElement.classList.add("sunlight");
+      }
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen w-full bg-transparent overflow-hidden font-sans">
-      {/* OBS এবং ব্রাউজারের জন্য body ও html ব্যাকগ্রাউন্ড পুরোপুরি ট্রান্সপারেন্ট করা হলো */}
-      <style>{`
-        html, body {
-          background-color: transparent !important;
-          background: transparent !important;
-          overflow: hidden !important;
-        }
-      `}</style>
+    <div 
+      data-overlay-root
+      className="relative min-h-screen w-full overflow-hidden bg-transparent font-sans select-none antialiased [transform:translateZ(0)]"
+    >
       {children}
     </div>
   );

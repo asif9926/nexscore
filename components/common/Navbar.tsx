@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Radio, History, Home } from "lucide-react";
+import { Radio, History, Home, Sun, Moon } from "lucide-react";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 
 export default function Navbar() {
@@ -10,14 +11,39 @@ export default function Navbar() {
   const { matchData } = useMatchData();
   const isLive = matchData?.meta?.status === "live";
 
+  const [isSunlight, setIsSunlight] = useState(false);
+
+  // ব্রাউজার লোড হলে আগের সেভ করা থিম চেক করবে
+  useEffect(() => {
+    const savedMode = localStorage.getItem("nexscore_sunlight") === "true";
+    setIsSunlight(savedMode);
+    if (savedMode) {
+      document.documentElement.classList.add("sunlight");
+    } else {
+      document.documentElement.classList.remove("sunlight");
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextMode = !isSunlight;
+    setIsSunlight(nextMode);
+    localStorage.setItem("nexscore_sunlight", String(nextMode));
+
+    if (nextMode) {
+      document.documentElement.classList.add("sunlight");
+    } else {
+      document.documentElement.classList.remove("sunlight");
+    }
+  };
+
   // শুধুমাত্র /admin/login ছাড়া বাকি সব অ্যাডমিন পাথে হাইড থাকবে
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") return null;
 
   return (
-    <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden border-b border-border/50 bg-ink/90 backdrop-blur-xl shadow-sm">
+    <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden border-b border-border/50 bg-ink/90 backdrop-blur-xl shadow-sm transition-colors duration-200">
       <div className="mx-auto flex h-16 sm:h-20 w-full max-w-7xl items-center justify-between px-3 sm:px-6 lg:px-8">
         
-        {/* Left: Compact Logo */}
+        {/* Left: Brand Logo */}
         <Link href="/" className="group flex items-center gap-2 transition-transform active:scale-95 shrink-0">
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-electric font-broadcast text-base sm:text-xl font-bold text-white shadow-md shadow-electric/30">
             N<span className="text-signal-gold">S</span>
@@ -29,8 +55,8 @@ export default function Navbar() {
           </div>
         </Link>
 
-        {/* Right: Mobile-Optimized Nav Icons */}
-        <nav className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* Right: Navigation Links & Theme Toggle */}
+        <nav className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <Link
             href="/"
             aria-label="Home"
@@ -64,6 +90,20 @@ export default function Navbar() {
             <History size={15} className={pathname.startsWith("/match-history") ? "text-signal-gold" : ""} />
             <span className="hidden sm:inline">Archives</span>
           </Link>
+
+          {/* ☀️ / 🌙 Quick Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle Theme"
+            title={isSunlight ? "Switch to Dark Mode" : "Switch to Light Mode"}
+            className={`flex h-9 w-9 items-center justify-center rounded-full border border-border transition-all active:scale-95 ${
+              isSunlight
+                ? "bg-amber-400/20 border-amber-500/40 text-amber-600 shadow-sm"
+                : "bg-panel text-fg-muted hover:border-fg-faint hover:text-fg"
+            }`}
+          >
+            {isSunlight ? <Sun size={16} className="text-amber-500 animate-spin-slow" /> : <Moon size={15} />}
+          </button>
         </nav>
       </div>
     </header>
