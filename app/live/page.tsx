@@ -32,7 +32,7 @@ export default function LiveMatchPage() {
   // ২. যদি কোনো অ্যাক্টিভ ম্যাচ না থাকে (Streamvex + Archives Promo Empty State)
   if (!matchData || !matchData.meta) {
     return (
-      <div className="relative flex min-h-screen flex-col overflow-hidden bg-ink text-fg selection:bg-electric/30">
+      <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-fg selection:bg-electric/30">
         <Navbar />
 
         <div className="pointer-events-none fixed inset-0 z-0 hidden sm:block">
