@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 import { WifiOff } from "lucide-react";
 
-const DEBOUNCE_MS = 60_000;
+// ১০ মিনিট (১০ * ৬০ * ১০০০ মিলিসেকেন্ড)
+const DEBOUNCE_MS = 10 * 60 * 1000; // 600_000 ms
 
 export default function ReconnectingBanner() {
   const { matchData } = useMatchData();
