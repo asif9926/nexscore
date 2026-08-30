@@ -20,7 +20,7 @@ export default async function MatchDetailPage({ params }: Props) {
   const matchData = match.fullSnapshot;
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-ink text-fg selection:bg-electric/30">
+    <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-fg selection:bg-electric/30">
       <Navbar />
 
       <div className="pointer-events-none fixed inset-0 z-0 hidden sm:block">

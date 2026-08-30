@@ -56,9 +56,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${spaceGrotesk.variable} ${anton.variable} ${rajdhani.variable} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${anton.variable} ${rajdhani.variable} antialiased`}
     >
-      <body className="min-h-full flex flex-col w-full max-w-full overflow-x-hidden">
+      <body className="min-h-screen flex flex-col w-full max-w-full overflow-x-clip">
         <ToastProvider>
           <MatchDataProvider>{children}</MatchDataProvider>
         </ToastProvider>

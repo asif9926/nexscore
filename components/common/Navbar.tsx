@@ -40,7 +40,7 @@ export default function Navbar() {
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") return null;
 
   return (
-    <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden border-b border-border/50 bg-ink/90 backdrop-blur-xl shadow-sm transition-colors duration-200">
+    <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-ink/90 backdrop-blur-xl shadow-sm transition-colors duration-200">
       <div className="mx-auto flex h-16 sm:h-20 w-full max-w-7xl items-center justify-between px-3 sm:px-6 lg:px-8">
         
         {/* Left: Brand Logo */}
@@ -91,18 +91,18 @@ export default function Navbar() {
             <span className="hidden sm:inline">Archives</span>
           </Link>
 
-          {/* ☀️ / 🌙 Quick Theme Toggle Button */}
+          {/* ☀️ / 🌙 Theme Toggle Button */}
           <button
             onClick={toggleTheme}
             aria-label="Toggle Theme"
             title={isSunlight ? "Switch to Dark Mode" : "Switch to Light Mode"}
             className={`flex h-9 w-9 items-center justify-center rounded-full border border-border transition-all active:scale-95 ${
               isSunlight
-                ? "bg-amber-400/20 border-amber-500/40 text-amber-600 shadow-sm"
+                ? "bg-amber-400/20 border-amber-500/40 text-amber-500 shadow-sm"
                 : "bg-panel text-fg-muted hover:border-fg-faint hover:text-fg"
             }`}
           >
-            {isSunlight ? <Sun size={16} className="text-amber-500 animate-spin-slow" /> : <Moon size={15} />}
+            {isSunlight ? <Sun size={16} className="text-amber-500" /> : <Moon size={15} />}
           </button>
         </nav>
       </div>

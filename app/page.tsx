@@ -22,7 +22,7 @@ export default async function LandingPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-ink text-fg selection:bg-electric/30">
+    <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-fg selection:bg-electric/30">
       <Navbar />
 
       {/* Ambient background glow */}
