@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useMatchData } from "@/lib/context/MatchDataContext";
-import { Trophy, Radio, ArrowRight, Activity, Calendar, Trash2, Eye, Home } from "lucide-react";
+import { Trophy, Radio, ArrowRight, Activity, Calendar, Trash2, Eye, Home, AlertTriangle, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getMatchHistory, deleteMatchAction } from "./actions";
 import { useToast } from "@/lib/context/ToastContext";
@@ -16,6 +16,7 @@ export default function AdminDashboardHome() {
 
   const [history, setHistory] = useState<any[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,8 +25,13 @@ export default function AdminDashboardHome() {
 
   const loadHistory = async () => {
     setFetching(true);
-    const data = await getMatchHistory();
-    setHistory(data);
+    setFetchError(null);
+    const res = await getMatchHistory();
+    if (res.success) {
+      setHistory(res.matches);
+    } else {
+      setFetchError(res.error || "Failed to load archived matches from Firestore.");
+    }
     setFetching(false);
   };
 
@@ -66,7 +72,6 @@ export default function AdminDashboardHome() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {/* Card 1: Setup Match */}
         <Link 
           href="/admin/setup"
           onClick={(e) => {
@@ -96,7 +101,6 @@ export default function AdminDashboardHome() {
           </motion.div>
         </Link>
 
-        {/* Card 2: Control Room */}
         <Link href="/admin/control" className={`group block ${!isLive && !loading ? "opacity-75" : ""}`}>
           <motion.div
             whileHover={{ y: -5 }}
@@ -130,18 +134,38 @@ export default function AdminDashboardHome() {
         </Link>
       </div>
 
-      {/* Archived Matches List */}
+      {/* Archived Matches */}
       <div className="rounded-2xl border border-border bg-panel p-5 shadow-lg sm:p-6">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-xl font-bold text-fg">
             <Calendar size={20} className="text-fg-muted" /> Archived Matches
           </h2>
+          <button
+            onClick={loadHistory}
+            disabled={fetching}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-ink px-3 py-1.5 text-xs font-semibold text-fg-muted transition-colors hover:text-fg disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={fetching ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </button>
         </div>
+
+        {fetchError && (
+          <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-crimson/40 bg-crimson/10 p-3.5 text-xs text-crimson">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <strong className="block font-bold">Failed to load archived matches:</strong>
+              <span>{fetchError}</span>
+            </div>
+          </div>
+        )}
 
         {fetching ? (
           <div className="animate-pulse py-12 text-center font-medium text-fg-faint">Loading archives...</div>
-        ) : history.length === 0 ? (
-          <div className="rounded-xl border border-border/50 bg-ink/50 py-12 text-center text-fg-faint">No completed matches found.</div>
+        ) : history.length === 0 && !fetchError ? (
+          <div className="rounded-xl border border-border/50 bg-ink/50 py-12 text-center text-fg-faint">
+            No completed matches found in database. Complete a match from Control Room to see it here.
+          </div>
         ) : (
           <div className="max-h-[500px] space-y-3 overflow-y-auto pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {history.map((match) => {

@@ -6,12 +6,12 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 // ১. ফায়ারবেস থেকে সব ম্যাচ হিস্ট্রি নিয়ে আসার ফাংশন
-export async function getMatchHistory() {
+export async function getMatchHistory(): Promise<{ success: boolean; matches: any[]; error?: string }> {
   try {
     const snapshot = await adminFirestore.collection("matches_history").get();
-    
+
     if (snapshot.empty) {
-      return [];
+      return { success: true, matches: [] };
     }
 
     const matches = snapshot.docs.map((doc) => ({
@@ -19,15 +19,21 @@ export async function getMatchHistory() {
       ...doc.data(),
     }));
 
-    // জাভাস্ক্রিপ্ট ইন-মেমোরি ডিসেন্ডিং সর্ট (যাতে completedAt মিসিং থাকলেও এরর না হয়)
-    return matches.sort((a: any, b: any) => {
+    // ইন-মেমোরি সর্ট
+    matches.sort((a: any, b: any) => {
       const timeA = a.completedAt || a.fullSnapshot?.meta?.updatedAt || 0;
       const timeB = b.completedAt || b.fullSnapshot?.meta?.updatedAt || 0;
       return timeB - timeA;
     });
-  } catch (error) {
-    console.error("Error fetching match history:", error);
-    return [];
+
+    return { success: true, matches };
+  } catch (error: any) {
+    console.error("CRITICAL Firestore getMatchHistory error:", error);
+    return { 
+      success: false, 
+      matches: [], 
+      error: error?.message || "Firestore connection failed. Check Vercel environment variables." 
+    };
   }
 }
 
@@ -61,11 +67,11 @@ export async function deleteMatchAction(id: string, clientToken?: string) {
     }
 
     await adminFirestore.collection("matches_history").doc(id).delete();
-    
+
     revalidatePath("/admin");
     revalidatePath("/match-history");
     revalidatePath("/");
-    
+
     return { success: true };
   } catch (error: any) {
     console.error("Error deleting match:", error);
