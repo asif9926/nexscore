@@ -6,7 +6,13 @@ import { getDatabase } from "firebase-admin/database";
 function getPrivateKey() {
   const key = process.env.FIREBASE_PRIVATE_KEY;
   if (!key) return undefined;
-  return key.replace(/\\n/g, "\n");
+  
+  // কোটেশন মার্ক থাকলে তা রিমুভ করে \n ঠিক করা
+  let cleanKey = key.trim();
+  if (cleanKey.startsWith('"') && cleanKey.endsWith('"')) {
+    cleanKey = cleanKey.substring(1, cleanKey.length - 1);
+  }
+  return cleanKey.replace(/\\n/g, "\n");
 }
 
 export function getAdminApp() {
