@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ref, update, get } from "firebase/database";
+import { useState, useRef, useEffect } from "react";
+import { ref, update } from "firebase/database";
 import { rtdb } from "@/lib/firebase/client";
 import {
   Tv,
@@ -35,7 +35,7 @@ const CRICKET_THEMES = [
   { id: "psl", label: "PSL Cyber (Neon)" },
   { id: "fox", label: "Fox Sports (Slanted)" },
   { id: "ipl", label: "IPL Neon (Chyron)" },
-  { id: "minimal", label: "Minimal Bar (Compact)" }, // <-- নতুন থিম
+  { id: "minimal", label: "Minimal Bar (Compact)" },
 ];
 
 const FOOTBALL_THEMES = [
@@ -56,33 +56,61 @@ export default function BroadcastControls({
 }: Props) {
   const { showToast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
+  const autoRevertTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const currentTheme = activeTheme || (sport === "football" ? "premier" : "sky");
   const themesList = sport === "football" ? FOOTBALL_THEMES : CRICKET_THEMES;
 
+  // কম্পোনেন্ট আনমাউন্ট হলে টাইমার স্বয়ংক্রিয় ক্লিনআপ
+  useEffect(() => {
+    return () => {
+      if (autoRevertTimerRef.current) clearTimeout(autoRevertTimerRef.current);
+    };
+  }, []);
+
+  // 🛡️ রেস-কন্ডিশন মুক্ত গ্রাফিক্স টগল ইঞ্জিন
   const toggleGraphic = (graphic: BroadcastGraphicType, autoRevertMs: number = 0) => {
+    if (autoRevertTimerRef.current) {
+      clearTimeout(autoRevertTimerRef.current);
+      autoRevertTimerRef.current = null;
+    }
+
     if (activeGraphic === graphic) {
-      update(ref(rtdb), { "match/meta/activeGraphic": "LOWER_THIRD" });
+      update(ref(rtdb), { 
+        "match/meta/activeGraphic": "LOWER_THIRD",
+        "match/meta/updatedAt": Date.now()
+      });
       return;
     }
 
-    update(ref(rtdb), { "match/meta/activeGraphic": graphic });
+    update(ref(rtdb), { 
+      "match/meta/activeGraphic": graphic,
+      "match/meta/updatedAt": Date.now()
+    });
 
     if (autoRevertMs > 0) {
-      setTimeout(async () => {
-        const snap = await get(ref(rtdb, "match/meta/activeGraphic"));
-        if (snap.val() === graphic) {
-          update(ref(rtdb), { "match/meta/activeGraphic": "LOWER_THIRD" });
-        }
+      autoRevertTimerRef.current = setTimeout(() => {
+        update(ref(rtdb), { 
+          "match/meta/activeGraphic": "LOWER_THIRD",
+          "match/meta/updatedAt": Date.now()
+        });
+        autoRevertTimerRef.current = null;
       }, autoRevertMs);
     }
   };
 
   const changeTheme = (themeId: string) => {
-    update(ref(rtdb), { "match/meta/activeTheme": themeId });
+    update(ref(rtdb), { 
+      "match/meta/activeTheme": themeId,
+      "match/meta/updatedAt": Date.now()
+    });
   };
 
   const toggleVisibility = (field: "showScoreboard" | "showLogo", current: boolean) => {
-    update(ref(rtdb), { [`match/meta/${field}`]: !current });
+    update(ref(rtdb), { 
+      [`match/meta/${field}`]: !current,
+      "match/meta/updatedAt": Date.now()
+    });
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,7 +126,10 @@ export default function BroadcastControls({
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = reader.result as string;
-      update(ref(rtdb), { "match/meta/customLogoUrl": base64String });
+      update(ref(rtdb), { 
+        "match/meta/customLogoUrl": base64String,
+        "match/meta/updatedAt": Date.now()
+      });
       showToast("Custom logo applied to broadcast overlay!", "success");
       setIsUploading(false);
     };
@@ -106,7 +137,10 @@ export default function BroadcastControls({
   };
 
   const removeCustomLogo = () => {
-    update(ref(rtdb), { "match/meta/customLogoUrl": null });
+    update(ref(rtdb), { 
+      "match/meta/customLogoUrl": null,
+      "match/meta/updatedAt": Date.now()
+    });
     showToast("Reverted to default channel badge.", "info");
   };
 
@@ -134,7 +168,6 @@ export default function BroadcastControls({
             Instant Graphics Triggers (Click to Toggle / Auto-revert)
           </label>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            {/* Batter Spotlight */}
             <button
               onClick={() => toggleGraphic("BATSMAN_CARD", 6000)}
               className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition-all active:scale-95 ${
@@ -148,7 +181,6 @@ export default function BroadcastControls({
               {activeGraphic === "BATSMAN_CARD" && <span className="text-[9px] font-black">● ON</span>}
             </button>
 
-            {/* Bowler Spell */}
             <button
               onClick={() => toggleGraphic("BOWLER_CARD", 6000)}
               className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition-all active:scale-95 ${
@@ -162,7 +194,6 @@ export default function BroadcastControls({
               {activeGraphic === "BOWLER_CARD" && <span className="text-[9px] font-black">● ON</span>}
             </button>
 
-            {/* Partnership */}
             <button
               onClick={() => toggleGraphic("PARTNERSHIP_CARD", 7000)}
               className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition-all active:scale-95 ${
@@ -176,7 +207,6 @@ export default function BroadcastControls({
               {activeGraphic === "PARTNERSHIP_CARD" && <span className="text-[9px] font-black">● ON</span>}
             </button>
 
-            {/* Match Summary */}
             <button
               onClick={() => toggleGraphic("MATCH_SUMMARY", 8000)}
               className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition-all active:scale-95 ${
@@ -190,7 +220,6 @@ export default function BroadcastControls({
               {activeGraphic === "MATCH_SUMMARY" && <span className="text-[9px] font-black">● ON</span>}
             </button>
 
-            {/* Innings Break Poster */}
             <button
               onClick={() => toggleGraphic("INNINGS_BREAK")}
               className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition-all active:scale-95 ${
@@ -204,7 +233,6 @@ export default function BroadcastControls({
               {activeGraphic === "INNINGS_BREAK" && <span className="text-[9px] font-black">● ON</span>}
             </button>
 
-            {/* Result Poster */}
             <button
               onClick={() => toggleGraphic("RESULT_POSTER")}
               className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition-all active:scale-95 ${
@@ -287,7 +315,6 @@ export default function BroadcastControls({
           </button>
         </div>
 
-        {/* Custom PNG Logo Upload Card */}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-ink/60 p-3">
           <div className="flex items-center gap-3">
             {customLogoUrl ? (

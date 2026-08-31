@@ -1,16 +1,30 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { increment } from "firebase/database";
 import { commitActionAtomic } from "@/lib/firebase/actions";
 import { useToast } from "@/lib/context/ToastContext";
-import type { Batsman, Bowler, MatchData } from "@/lib/types/match";
+import type { Batsman, Bowler, FallOfWicket, MatchData, Player } from "@/lib/types/match";
+
+interface InningsData {
+  battingTeam?: string;
+  score: number;
+  wickets: number;
+  overs: string;
+  runRate?: number;
+  target?: number;
+  extras?: { wide: number; noBall: number; bye: number; legBye: number };
+  batsmen?: Batsman[];
+  bowlers?: Bowler[];
+  recentBalls?: any[];
+  fallOfWickets?: FallOfWicket[];
+  isCompleted?: boolean;
+}
 
 const addBallToOvers = (currentOvers: string) => {
-  let [overs, balls] = currentOvers.split(".").map(Number);
+  let [overs, balls] = (currentOvers || "0.0").split(".").map(Number);
   balls += 1;
   let isEndOfOver = false;
-  if (balls === 6) {
+  if (balls >= 6) {
     overs += 1;
     balls = 0;
     isEndOfOver = true;
@@ -18,17 +32,20 @@ const addBallToOvers = (currentOvers: string) => {
   return { newOvers: `${overs}.${balls}`, isEndOfOver };
 };
 
-interface ConfirmWicketArgs {
-  outBatsmanId: string;
-  newBatsmanId: string;
-  dismissalType: string;
-}
+const oversToDecimal = (oversStr?: string) => {
+  if (!oversStr) return 0;
+  const [o, b] = oversStr.split(".").map(Number);
+  return (o || 0) + (b || 0) / 6;
+};
 
-interface ConfirmExtrasArgs {
-  type: string;
-  extraRunsRan: number;
-  isFromBat?: boolean;
-}
+const isMaidenOver = (recentBalls: any[], currentBallRuns: number) => {
+  const currentOverDeliveries = recentBalls.slice(-5);
+  const allPreviousDots = currentOverDeliveries.every((b: any) => {
+    const label = typeof b === "object" ? b.label : String(b);
+    return label === "•" || label === "0" || label === "W";
+  });
+  return allPreviousDots && currentBallRuns === 0;
+};
 
 export function useCricketScoring(matchData: MatchData | null) {
   const { showToast } = useToast();
@@ -39,6 +56,8 @@ export function useCricketScoring(matchData: MatchData | null) {
   const [isInningsBreakModalOpen, setIsInningsBreakModalOpen] = useState(false);
 
   const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
+  const lastCompletedOverBowlerIdRef = useRef<string | null>(null);
+  const lastOverNumberRef = useRef<string>("");
 
   useEffect(() => {
     return () => {
@@ -50,573 +69,661 @@ export function useCricketScoring(matchData: MatchData | null) {
   const cricket = matchData?.cricket;
 
   const currentInningsKey = cricket?.currentInnings === 2 ? "innings2" : "innings1";
-  const currentInnings = cricket?.[currentInningsKey];
+  const currentInnings: InningsData | undefined = cricket?.[currentInningsKey];
 
   const battingTeamKey = currentInnings?.battingTeam;
   const bowlingTeamKey = battingTeamKey === "teamA" ? "teamB" : "teamA";
   const battingTeamName = battingTeamKey === "teamA" ? meta?.teamA : meta?.teamB;
   const bowlingTeamName = bowlingTeamKey === "teamA" ? meta?.teamA : meta?.teamB;
 
-  const battingSquad = battingTeamKey ? cricket?.squads?.[battingTeamKey as "teamA" | "teamB"] || [] : [];
-  const bowlingSquad = bowlingTeamKey ? cricket?.squads?.[bowlingTeamKey as "teamA" | "teamB"] || [] : [];
+  const battingSquad: Player[] = battingTeamKey ? (cricket?.squads?.[battingTeamKey as "teamA" | "teamB"] || []) : [];
+  const bowlingSquad: Player[] = bowlingTeamKey ? (cricket?.squads?.[bowlingTeamKey as "teamA" | "teamB"] || []) : [];
 
-  const activeBatsmen: Batsman[] = currentInnings?.batsmen?.filter((b) => !b.isOut) || [];
-  const availableBatsmen = battingSquad.filter(
-    (p) => !currentInnings?.batsmen?.find((b) => b.id === p.id)
+  const activeBatsmen: Batsman[] = (currentInnings?.batsmen || []).filter((b: Batsman) => !b.isOut);
+  const availableBatsmen: Player[] = battingSquad.filter(
+    (p: Player) => !(currentInnings?.batsmen || []).some((b: Batsman) => b.id === p.id)
   );
 
-  const strikerId = activeBatsmen.find((b) => b.onStrike)?.id;
-  const nonStrikerId = activeBatsmen.find((b) => !b.onStrike)?.id;
-  const activeBowlerId = currentInnings?.bowlers?.find((b) => b.isActive)?.id;
-  const activeBowlerObj: Bowler | undefined = currentInnings?.bowlers?.find((b) => b.isActive);
+  const striker = activeBatsmen.find((b: Batsman) => b.onStrike);
+  const nonStriker = activeBatsmen.find((b: Batsman) => !b.onStrike);
+  const activeBowlerObj: Bowler | undefined = (currentInnings?.bowlers || []).find((bw: Bowler) => bw.isActive);
 
-  const lastPromptedOverRef = useRef<string>("");
+  useEffect(() => {
+    if (meta?.sport === "cricket" && cricket && currentInnings) {
+      const currentOvers = currentInnings.overs || "0.0";
+      if (
+        currentOvers.endsWith(".0") &&
+        currentOvers !== "0.0" &&
+        lastOverNumberRef.current !== currentOvers &&
+        !currentInnings.isCompleted
+      ) {
+        lastOverNumberRef.current = currentOvers;
+        if (activeBowlerObj) {
+          lastCompletedOverBowlerIdRef.current = activeBowlerObj.id;
+        }
+        setIsNewBowlerModalOpen(true);
+      }
+    }
+  }, [matchData, currentInnings, cricket, meta?.sport, activeBowlerObj]);
 
-useEffect(() => {
-  if (meta?.sport === "cricket" && cricket) {
-    const innings = cricket[currentInningsKey];
-    const currentOvers = innings?.overs || "0.0";
+  const calculateRunRate = (score: number, oversStr: string) => {
+    const dec = oversToDecimal(oversStr);
+    return dec > 0 ? Number((score / dec).toFixed(2)) : 0;
+  };
+
+  const isBowlerChangeRequired = () => {
+    if (!currentInnings || !activeBowlerObj) return false;
+    const currentOvers = currentInnings.overs || "0.0";
 
     if (
       currentOvers.endsWith(".0") &&
       currentOvers !== "0.0" &&
-      lastPromptedOverRef.current !== currentOvers
+      lastCompletedOverBowlerIdRef.current === activeBowlerObj.id
     ) {
-      lastPromptedOverRef.current = currentOvers;
+      showToast("ওভার শেষ হয়েছে! পরবর্তী বল করার আগে নতুন বোলার নির্বাচন করুন।", "error");
       setIsNewBowlerModalOpen(true);
+      return true;
     }
-  }
-}, [matchData, currentInningsKey, cricket, meta?.sport]);
+    return false;
+  };
 
   const checkInningsCompletion = (newScore: number, newWickets: number, newOvers: string) => {
-    if (!cricket) return;
-    const isAllOut = newWickets >= 10;
-    const isOversDone = Number(newOvers.split(".")[0]) >= (cricket.maxOvers || 20);
+    if (!cricket) return false;
+    const maxOvers = cricket.maxOvers || 20;
+    const totalBatters = battingSquad.length || 11;
+    const isAllOut = newWickets >= Math.max(1, totalBatters - 1);
+    const isOversDone = Number(newOvers.split(".")[0]) >= maxOvers;
 
-    if (cricket.currentInnings === 1 && !cricket.innings1.isCompleted) {
+    if (cricket.currentInnings === 1 && !cricket.innings1?.isCompleted) {
       if (isAllOut || isOversDone) {
-        const timer = setTimeout(() => setIsInningsBreakModalOpen(true), 1500);
+        const timer = setTimeout(() => setIsInningsBreakModalOpen(true), 1200);
         timeoutRefs.current.push(timer);
+        return true;
       }
-    } else if (cricket.currentInnings === 2 && !cricket.innings2.isCompleted) {
+    } else if (cricket.currentInnings === 2 && !cricket.innings2?.isCompleted) {
       const isTargetReached = currentInnings?.target && newScore >= currentInnings.target;
       if (isTargetReached || isAllOut || isOversDone) {
         const timer = setTimeout(
-          () => showToast("Match Completed! Target Reached or Innings Over. You can now End Match & Archive.", "success"),
+          () => showToast("Match Completed! You can now finalize and archive the match.", "success"),
           1000
         );
         timeoutRefs.current.push(timer);
+        return true;
       }
+    }
+    return false;
+  };
+
+  const handleSwapStrike = async () => {
+    if (!currentInnings || isProcessing || activeBatsmen.length < 2 || !striker || !nonStriker) return;
+    setIsProcessing(true);
+
+    try {
+      const updatedBatsmen = (currentInnings.batsmen || []).map((b: Batsman) => {
+        if (b.id === striker.id) return { ...b, onStrike: false };
+        if (b.id === nonStriker.id) return { ...b, onStrike: true };
+        return b;
+      });
+
+      const nextInningsState: InningsData = { ...currentInnings, batsmen: updatedBatsmen };
+      const stateUpdates = {
+        [`match/cricket/${currentInningsKey}`]: nextInningsState,
+        "match/meta/updatedAt": Date.now(),
+      };
+      const previousPaths = {
+        [`match/cricket/${currentInningsKey}`]: currentInnings,
+      };
+
+      await commitActionAtomic(stateUpdates, "Swap Strike", previousPaths);
+      showToast("Strike swapped!", "info");
+    } catch (error) {
+      console.error("Strike swap error:", error);
+      showToast("Failed to swap strike.", "error");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleRuns = async (runs: number) => {
-    if (!currentInnings || !meta || isProcessing) return;
+    if (!currentInnings || !meta || isProcessing || !striker || !activeBowlerObj) return;
+    
+    if (isBowlerChangeRequired()) return;
+
     setIsProcessing(true);
 
     try {
       const { newOvers, isEndOfOver } = addBallToOvers(currentInnings.overs);
-
+      const newScore = currentInnings.score + runs;
       let rotateStrike = runs % 2 !== 0;
       if (isEndOfOver) rotateStrike = !rotateStrike;
 
-      const strikerName = currentInnings.batsmen.find((b) => b.id === strikerId)?.name || "Batter";
-      const bowlerName = currentInnings.bowlers.find((b) => b.id === activeBowlerId)?.name || "Bowler";
+      const updatedBatsmen = (currentInnings.batsmen || []).map((b: Batsman) => {
+        if (b.id === striker.id) {
+          return {
+            ...b,
+            runs: b.runs + runs,
+            balls: b.balls + 1,
+            fours: runs === 4 ? (b.fours || 0) + 1 : b.fours || 0,
+            sixes: runs === 6 ? (b.sixes || 0) + 1 : b.sixes || 0,
+            onStrike: rotateStrike ? false : true,
+          };
+        }
+        if (nonStriker && b.id === nonStriker.id) {
+          return { ...b, onStrike: rotateStrike ? true : false };
+        }
+        return b;
+      });
 
+      const { newOvers: bowlerNewOvers } = addBallToOvers(activeBowlerObj.overs);
+      const isMaiden = isEndOfOver && isMaidenOver(currentInnings.recentBalls || [], runs);
+
+      const updatedBowlers = (currentInnings.bowlers || []).map((bw: Bowler) => {
+        if (bw.id === activeBowlerObj.id) {
+          return {
+            ...bw,
+            overs: bowlerNewOvers,
+            runs: bw.runs + runs,
+            maidens: isMaiden ? (bw.maidens || 0) + 1 : bw.maidens || 0,
+          };
+        }
+        return bw;
+      });
+
+      const strikerName = striker.name;
+      const bowlerName = activeBowlerObj.name;
       const commentaryText =
         runs === 6
           ? `SIX! Massive hit by ${strikerName} over the ropes!`
           : runs === 4
-          ? `FOUR! Beautiful shot by ${strikerName} to the boundary.`
+          ? `FOUR! Beautiful shot by ${strikerName} piercing the gap.`
           : runs === 0
-          ? `Dot ball. Good bowling by ${bowlerName}.`
+          ? `Dot ball. Good line by ${bowlerName}.`
           : `${runs} run${runs > 1 ? "s" : ""} taken by ${strikerName}.`;
 
-      const newBallObj = {
+      const ballObj = {
         ballNumber: newOvers,
-        runs: runs,
-        isWicket: false,
-        isExtra: false,
+        bowlerName,
         batsmanName: strikerName,
-        bowlerName: bowlerName,
+        runs,
+        isWicket: false,
         text: commentaryText,
-        timestamp: Date.now(),
-        label: String(runs),
+        label: runs === 0 ? "•" : String(runs),
       };
 
-      const updatedRecentBalls = [...(currentInnings.recentBalls || []).slice(-29), newBallObj];
+      const isDone = checkInningsCompletion(newScore, currentInnings.wickets, newOvers);
 
-      const strikerIndex = currentInnings.batsmen.findIndex((b) => b.id === strikerId);
-      const nonStrikerIndex = currentInnings.batsmen.findIndex((b) => b.id === nonStrikerId);
-      const bowlerIndex = currentInnings.bowlers.findIndex((b) => b.id === activeBowlerId);
+      const nextInningsState: InningsData = {
+        ...currentInnings,
+        score: newScore,
+        overs: newOvers,
+        runRate: calculateRunRate(newScore, newOvers),
+        batsmen: updatedBatsmen,
+        bowlers: updatedBowlers,
+        recentBalls: [...(currentInnings.recentBalls || []), ballObj],
+        isCompleted: isDone || currentInnings.isCompleted,
+      };
+
+      const eventText = runs === 6 ? "SIX" : runs === 4 ? "FOUR" : null;
 
       const stateUpdates: Record<string, any> = {
-        [`match/cricket/${currentInningsKey}/score`]: increment(runs),
-        [`match/cricket/${currentInningsKey}/overs`]: newOvers,
-        [`match/cricket/${currentInningsKey}/recentBalls`]: updatedRecentBalls,
-        ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD"
-          ? { "match/meta/activeGraphic": "LOWER_THIRD" }
-          : {}),
-        ...(runs === 4 || runs === 6 ? { "match/meta/currentEvent": runs === 4 ? "FOUR" : "SIX" } : {}),
+        [`match/cricket/${currentInningsKey}`]: nextInningsState,
+        "match/meta/updatedAt": Date.now(),
       };
+      if (eventText) stateUpdates["match/meta/currentEvent"] = eventText;
 
-      const previousPaths: Record<string, any> = {
-        [`match/cricket/${currentInningsKey}/score`]: currentInnings.score,
-        [`match/cricket/${currentInningsKey}/overs`]: currentInnings.overs,
-        [`match/cricket/${currentInningsKey}/recentBalls`]: currentInnings.recentBalls || [],
-        ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD"
-          ? { "match/meta/activeGraphic": meta.activeGraphic }
-          : {}),
-        "match/meta/currentEvent": meta.currentEvent,
+      const previousPaths = {
+        [`match/cricket/${currentInningsKey}`]: currentInnings,
+        "match/meta/currentEvent": meta.currentEvent || null,
       };
-
-      if (strikerIndex !== -1) {
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/runs`] = increment(runs);
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/balls`] = increment(1);
-        if (runs === 4) stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/fours`] = increment(1);
-        if (runs === 6) stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/sixes`] = increment(1);
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/onStrike`] = !rotateStrike;
-
-        previousPaths[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}`] = currentInnings.batsmen[strikerIndex];
-      }
-
-      if (nonStrikerIndex !== -1) {
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${nonStrikerIndex}/onStrike`] = rotateStrike;
-        previousPaths[`match/cricket/${currentInningsKey}/batsmen/${nonStrikerIndex}`] = currentInnings.batsmen[nonStrikerIndex];
-      }
-
-      if (bowlerIndex !== -1) {
-        const currentBowler = currentInnings.bowlers[bowlerIndex];
-        const { newOvers: bowlerOvers, isEndOfOver: bowlerOverDone } = addBallToOvers(currentBowler.overs);
-
-        stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}/runs`] = increment(runs);
-        stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}/overs`] = bowlerOvers;
-
-        if (bowlerOverDone) {
-          const currentOverBalls = (currentInnings.recentBalls || []).slice(-5);
-          const runsInThisOver =
-            currentOverBalls.reduce(
-              (acc: number, b: any) => acc + (typeof b === "object" ? b.runs : Number(b) || 0),
-              0
-            ) + runs;
-          if (runsInThisOver === 0) {
-            stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}/maidens`] = increment(1);
-          }
-        }
-
-        previousPaths[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}`] = currentBowler;
-      }
 
       await commitActionAtomic(stateUpdates, `${runs} Runs`, previousPaths);
-      checkInningsCompletion(currentInnings.score + runs, currentInnings.wickets, newOvers);
-
-      if (runs === 4 || runs === 6) {
-        const timer = setTimeout(
-          () =>
-            commitActionAtomic({ "match/meta/currentEvent": null }, "Clear Event", {
-              "match/meta/currentEvent": runs === 4 ? "FOUR" : "SIX",
-            }),
-          4000
-        );
-        timeoutRefs.current.push(timer);
-      }
+      if (isMaiden) showToast(`Maiden over for ${activeBowlerObj.name}! 🎯`, "success");
     } catch (error) {
-      console.error("Error adding runs:", error);
-      showToast("Failed to update runs. Check connection.", "error");
+      console.error("Failed to update runs:", error);
+      showToast("Error updating score.", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const confirmWicket = async ({ outBatsmanId, newBatsmanId, dismissalType }: ConfirmWicketArgs) => {
-    if (!currentInnings || !meta || isProcessing) return;
+  const confirmWicket = async ({
+    outBatsmanId,
+    newBatsmanId,
+    dismissalType,
+    runsCompleted = 0,
+    isWideDelivery = false,
+  }: {
+    outBatsmanId: string;
+    newBatsmanId: string;
+    dismissalType: string;
+    runsCompleted?: number;
+    isWideDelivery?: boolean;
+  }) => {
+    if (!currentInnings || !meta || isProcessing || !activeBowlerObj || !striker) return;
+    
+    if (isBowlerChangeRequired()) return;
+
     setIsProcessing(true);
-    setIsWicketModalOpen(false);
 
     try {
-      const isAllOut = (currentInnings.wickets + 1) >= 10 || availableBatsmen.length === 0;
-      const newPlayerInfo = isAllOut ? null : battingSquad.find((p) => p.id === newBatsmanId);
+      const isLegal = !isWideDelivery;
+      const { newOvers, isEndOfOver } = isLegal
+        ? addBallToOvers(currentInnings.overs)
+        : { newOvers: currentInnings.overs, isEndOfOver: false };
 
-      if (!isAllOut && !newPlayerInfo) {
-        showToast("Invalid new batsman", "error");
-        setIsProcessing(false);
-        return;
-      }
+      const totalRunsAdded = runsCompleted + (isWideDelivery ? 1 : 0);
+      const newScore = currentInnings.score + totalRunsAdded;
+      const newWickets = currentInnings.wickets + 1;
+      const outBatsman = (currentInnings.batsmen || []).find((b: Batsman) => b.id === outBatsmanId);
+      const nextPlayer = availableBatsmen.find((p: Player) => p.id === newBatsmanId);
 
-      const { newOvers, isEndOfOver } = addBallToOvers(currentInnings.overs);
-      const outBatsmanIndex = currentInnings.batsmen.findIndex((b) => b.id === outBatsmanId);
-      const newBatsmanIndex = currentInnings.batsmen.length;
-      const bowlerIndex = currentInnings.bowlers.findIndex((b) => b.id === activeBowlerId);
+      const isStrikerOut = striker.id === outBatsmanId;
+      const strikeRotatedByRuns = runsCompleted % 2 !== 0;
+      let nextStrikerIsOnStrike = isEndOfOver ? !strikeRotatedByRuns : strikeRotatedByRuns;
 
-      const outBatsmanInfo = currentInnings.batsmen[outBatsmanIndex];
-      const newBatsmanOnStrike = isEndOfOver ? !outBatsmanInfo?.onStrike : outBatsmanInfo?.onStrike ?? false;
-      const outBatsmanName = outBatsmanInfo?.name || "Unknown";
-      const bowlerName = currentInnings.bowlers[bowlerIndex]?.name || "Bowler";
+      const updatedBatsmen: Batsman[] = (currentInnings.batsmen || []).map((b: Batsman) => {
+        if (b.id === outBatsmanId) {
+          return {
+            ...b,
+            runs: isStrikerOut ? b.runs + runsCompleted : b.runs,
+            balls: isLegal && isStrikerOut ? b.balls + 1 : b.balls,
+            isOut: true,
+            dismissal: dismissalType,
+            onStrike: false,
+          };
+        }
+        if (isStrikerOut && nonStriker && b.id === nonStriker.id) {
+          return { ...b, onStrike: nextStrikerIsOnStrike };
+        }
+        if (!isStrikerOut && b.id === striker.id) {
+          return {
+            ...b,
+            runs: b.runs + runsCompleted,
+            balls: isLegal ? b.balls + 1 : b.balls,
+            onStrike: nextStrikerIsOnStrike ? false : true,
+          };
+        }
+        return b;
+      });
 
-      const newBallObj = {
-        ballNumber: newOvers,
-        runs: 0,
-        isWicket: true,
-        wicketType: dismissalType,
-        isExtra: false,
-        batsmanName: outBatsmanName,
-        bowlerName: bowlerName,
-        text: `WICKET! ${outBatsmanName} is OUT (${dismissalType})!`,
-        timestamp: Date.now(),
-        label: "W",
-      };
-
-      const updatedRecentBallsW = [...(currentInnings.recentBalls || []).slice(-29), newBallObj];
-      const updatedFallOfWickets = [
-        ...(currentInnings.fallOfWickets || []),
-        {
-          wicketNumber: currentInnings.wickets + 1,
-          score: currentInnings.score,
-          overs: currentInnings.overs,
-          batsmanName: outBatsmanName,
-        },
-      ];
-
-      const stateUpdates: Record<string, any> = {
-        [`match/cricket/${currentInningsKey}/wickets`]: increment(1),
-        [`match/cricket/${currentInningsKey}/overs`]: newOvers,
-        [`match/cricket/${currentInningsKey}/fallOfWickets`]: updatedFallOfWickets,
-        [`match/cricket/${currentInningsKey}/recentBalls`]: updatedRecentBallsW,
-        ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD"
-          ? { "match/meta/activeGraphic": "LOWER_THIRD" }
-          : {}),
-        "match/meta/currentEvent": "WICKET",
-      };
-
-      const previousPaths: Record<string, any> = {
-        [`match/cricket/${currentInningsKey}/wickets`]: currentInnings.wickets,
-        [`match/cricket/${currentInningsKey}/overs`]: currentInnings.overs,
-        [`match/cricket/${currentInningsKey}/fallOfWickets`]: currentInnings.fallOfWickets || [],
-        [`match/cricket/${currentInningsKey}/recentBalls`]: currentInnings.recentBalls || [],
-        ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD"
-          ? { "match/meta/activeGraphic": meta.activeGraphic }
-          : {}),
-        "match/meta/currentEvent": meta.currentEvent,
-      };
-
-      if (outBatsmanIndex !== -1) {
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${outBatsmanIndex}/isOut`] = true;
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${outBatsmanIndex}/dismissal`] = dismissalType;
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${outBatsmanIndex}/balls`] = increment(1);
-        previousPaths[`match/cricket/${currentInningsKey}/batsmen/${outBatsmanIndex}`] = currentInnings.batsmen[outBatsmanIndex];
-      }
-
-      if (!isAllOut && newPlayerInfo) {
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${newBatsmanIndex}`] = {
-          id: newPlayerInfo.id,
-          name: newPlayerInfo.name,
+      if (nextPlayer) {
+        updatedBatsmen.push({
+          id: nextPlayer.id,
+          name: nextPlayer.name,
           runs: 0,
           balls: 0,
           fours: 0,
           sixes: 0,
-          onStrike: newBatsmanOnStrike,
+          onStrike: isStrikerOut ? (nextStrikerIsOnStrike ? false : true) : nextStrikerIsOnStrike ? true : false,
           isOut: false,
-        };
-        previousPaths[`match/cricket/${currentInningsKey}/batsmen/${newBatsmanIndex}`] = null;
+        });
       }
 
-      const otherBatsmanId = outBatsmanId === strikerId ? nonStrikerId : strikerId;
-      const otherBatsmanIndex = currentInnings.batsmen.findIndex((b) => b.id === otherBatsmanId);
-      if (otherBatsmanIndex !== -1) {
-        const otherBatsmanInfo = currentInnings.batsmen[otherBatsmanIndex];
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${otherBatsmanIndex}/onStrike`] = isEndOfOver
-          ? !otherBatsmanInfo.onStrike
-          : otherBatsmanInfo.onStrike;
-        previousPaths[`match/cricket/${currentInningsKey}/batsmen/${otherBatsmanIndex}`] = otherBatsmanInfo;
-      }
+      const { newOvers: bowlerNewOvers } = isLegal
+        ? addBallToOvers(activeBowlerObj.overs)
+        : { newOvers: activeBowlerObj.overs };
 
-      if (bowlerIndex !== -1) {
-        const isBowlerWicket = dismissalType !== "Run Out";
-        const { newOvers: bowlerOvers } = addBallToOvers(currentInnings.bowlers[bowlerIndex].overs);
+      const isBowlerWicket = !["Run Out", "Hit Wicket", "Timed Out", "Obstructing Field"].includes(dismissalType);
+      const isMaiden = isEndOfOver && isLegal && isMaidenOver(currentInnings.recentBalls || [], totalRunsAdded);
 
-        stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}/overs`] = bowlerOvers;
-        if (isBowlerWicket) {
-          stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}/wickets`] = increment(1);
+      const updatedBowlers = (currentInnings.bowlers || []).map((bw: Bowler) => {
+        if (bw.id === activeBowlerObj.id) {
+          return {
+            ...bw,
+            overs: bowlerNewOvers,
+            runs: bw.runs + totalRunsAdded,
+            wickets: isBowlerWicket ? bw.wickets + 1 : bw.wickets,
+            maidens: isMaiden ? (bw.maidens || 0) + 1 : bw.maidens || 0,
+          };
         }
-        previousPaths[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}`] = currentInnings.bowlers[bowlerIndex];
-      }
+        return bw;
+      });
 
-      await commitActionAtomic(stateUpdates, `Wicket: ${dismissalType}`, previousPaths);
-      checkInningsCompletion(currentInnings.score, currentInnings.wickets + 1, newOvers);
+      const currentExtras = currentInnings.extras || { wide: 0, noBall: 0, bye: 0, legBye: 0 };
+      const updatedExtras = {
+        ...currentExtras,
+        wide: isWideDelivery ? currentExtras.wide + 1 + runsCompleted : currentExtras.wide,
+      };
 
-      const timer = setTimeout(
-        () =>
-          commitActionAtomic({ "match/meta/currentEvent": null }, "Clear Event", {
-            "match/meta/currentEvent": "WICKET",
-          }),
-        4000
-      );
-      timeoutRefs.current.push(timer);
+      const newFow: FallOfWicket = {
+        score: newScore,
+        wicketNumber: newWickets,
+        overs: newOvers,
+        batsmanName: outBatsman?.name || "Batter",
+      };
+
+      const ballLabel = isWideDelivery ? (runsCompleted > 0 ? `Wd+W+${runsCompleted}` : "Wd+W") : (runsCompleted > 0 ? `W+${runsCompleted}` : "W");
+      const ballObj = {
+        ballNumber: newOvers,
+        bowlerName: activeBowlerObj.name,
+        batsmanName: outBatsman?.name || "Batter",
+        runs: totalRunsAdded,
+        isWicket: true,
+        text: `OUT! ${outBatsman?.name} departs (${dismissalType})${runsCompleted > 0 ? ` after completing ${runsCompleted} run(s)` : ""}.`,
+        label: ballLabel,
+      };
+
+      const isDone = checkInningsCompletion(newScore, newWickets, newOvers);
+
+      const nextInningsState: InningsData = {
+        ...currentInnings,
+        score: newScore,
+        wickets: newWickets,
+        overs: newOvers,
+        runRate: calculateRunRate(newScore, newOvers),
+        extras: updatedExtras,
+        batsmen: updatedBatsmen,
+        bowlers: updatedBowlers,
+        recentBalls: [...(currentInnings.recentBalls || []), ballObj],
+        fallOfWickets: [...(currentInnings.fallOfWickets || []), newFow],
+        isCompleted: isDone || currentInnings.isCompleted,
+      };
+
+      const stateUpdates: Record<string, any> = {
+        [`match/cricket/${currentInningsKey}`]: nextInningsState,
+        "match/meta/currentEvent": "WICKET",
+        "match/meta/updatedAt": Date.now(),
+      };
+
+      const previousPaths = {
+        [`match/cricket/${currentInningsKey}`]: currentInnings,
+        "match/meta/currentEvent": meta.currentEvent || null,
+      };
+
+      await commitActionAtomic(stateUpdates, "Wicket", previousPaths);
+      setIsWicketModalOpen(false);
+      if (isMaiden) showToast(`Maiden over for ${activeBowlerObj.name}! 🎯`, "success");
     } catch (error) {
-      console.error("Error confirming wicket:", error);
-      showToast("Failed to process wicket.", "error");
+      console.error("Failed to commit wicket:", error);
+      showToast("Error processing wicket.", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const confirmExtras = async ({ type, extraRunsRan, isFromBat }: ConfirmExtrasArgs) => {
-    if (!currentInnings || !meta || isProcessing) return;
+  const confirmExtras = async ({
+    type,
+    extraRunsRan,
+    isFromBat,
+  }: {
+    type: string;
+    extraRunsRan: number;
+    isFromBat?: boolean;
+  }) => {
+    if (!currentInnings || !meta || isProcessing || !striker || !activeBowlerObj) return;
+
+    if (isBowlerChangeRequired()) return;
+
     setIsProcessing(true);
-    setIsExtrasModalOpen(false);
 
     try {
-      let penaltyRuns = 0;
-      let totalRunsToAdd = extraRunsRan;
-      let newOvers = currentInnings.overs;
-      let isEndOfOver = false;
-      let extraFieldKey: "wide" | "noBall" | "bye" | "legBye";
+      let isLegalDelivery = false;
+      let penalty = 0;
+      let ballLabel = "Ex";
 
       if (type === "Wide") {
-        penaltyRuns = 1;
-        totalRunsToAdd += 1;
-        extraFieldKey = "wide";
+        penalty = 1 + extraRunsRan;
+        ballLabel = extraRunsRan > 0 ? `Wd+${extraRunsRan}` : "Wd";
       } else if (type === "No Ball") {
-        penaltyRuns = 1;
-        totalRunsToAdd += 1;
-        extraFieldKey = "noBall";
+        penalty = 1 + extraRunsRan;
+        ballLabel = extraRunsRan > 0 ? `Nb+${extraRunsRan}` : "Nb";
       } else if (type === "Bye") {
-        extraFieldKey = "bye";
-        const res = addBallToOvers(currentInnings.overs);
-        newOvers = res.newOvers;
-        isEndOfOver = res.isEndOfOver;
-      } else {
-        extraFieldKey = "legBye";
-        const res = addBallToOvers(currentInnings.overs);
-        newOvers = res.newOvers;
-        isEndOfOver = res.isEndOfOver;
+        isLegalDelivery = true;
+        penalty = extraRunsRan || 1;
+        ballLabel = extraRunsRan > 1 ? `${extraRunsRan}b` : "b";
+      } else if (type === "Leg Bye") {
+        isLegalDelivery = true;
+        penalty = extraRunsRan || 1;
+        ballLabel = extraRunsRan > 1 ? `${extraRunsRan}lb` : "lb";
       }
 
-      let rotateStrike = extraRunsRan % 2 !== 0;
-      if (isEndOfOver) rotateStrike = !rotateStrike;
+      const { newOvers, isEndOfOver } = isLegalDelivery
+        ? addBallToOvers(currentInnings.overs)
+        : { newOvers: currentInnings.overs, isEndOfOver: false };
 
-      const ballLabel =
-        type === "Wide"
-          ? `Wd${extraRunsRan > 0 ? "+" + extraRunsRan : ""}`
-          : type === "No Ball"
-          ? `Nb${extraRunsRan > 0 ? "+" + extraRunsRan : ""}`
-          : type === "Bye"
-          ? `${extraRunsRan}b`
-          : `${extraRunsRan}lb`;
+      const rotateStrike = (extraRunsRan % 2 !== 0 && !isEndOfOver) || (extraRunsRan % 2 === 0 && isEndOfOver);
 
-      const strikerName = currentInnings.batsmen.find((b) => b.id === strikerId)?.name || "Batter";
-      const bowlerName = currentInnings.bowlers.find((b) => b.id === activeBowlerId)?.name || "Bowler";
+      const updatedBatsmen = (currentInnings.batsmen || []).map((b: Batsman) => {
+        if (b.id === striker.id) {
+          const addedRuns = type === "No Ball" && isFromBat ? extraRunsRan : 0;
+          return {
+            ...b,
+            runs: b.runs + addedRuns,
+            balls: isLegalDelivery || (type === "No Ball" && isFromBat) ? b.balls + 1 : b.balls,
+            fours: addedRuns === 4 ? (b.fours || 0) + 1 : b.fours || 0,
+            sixes: addedRuns === 6 ? (b.sixes || 0) + 1 : b.sixes || 0,
+            onStrike: rotateStrike ? false : true,
+          };
+        }
+        if (nonStriker && b.id === nonStriker.id) {
+          return { ...b, onStrike: rotateStrike ? true : false };
+        }
+        return b;
+      });
 
-      const commentaryText =
-        isFromBat && type === "No Ball"
-          ? `No Ball! And ${strikerName} scores ${extraRunsRan} run(s) off the bat!`
-          : `Extra (${type}): ${totalRunsToAdd} run${totalRunsToAdd > 1 ? "s" : ""} added.`;
+      const { newOvers: bowlerNewOvers } = isLegalDelivery
+        ? addBallToOvers(activeBowlerObj.overs)
+        : { newOvers: activeBowlerObj.overs };
 
-      const newBallObj = {
-        ballNumber: newOvers,
-        runs: totalRunsToAdd,
+      const bowlerConceded = ["Wide", "No Ball"].includes(type) ? penalty : 0;
+      const updatedBowlers = (currentInnings.bowlers || []).map((bw: Bowler) => {
+        if (bw.id === activeBowlerObj.id) {
+          return {
+            ...bw,
+            overs: bowlerNewOvers,
+            runs: bw.runs + bowlerConceded,
+          };
+        }
+        return bw;
+      });
+
+      const currentExtras = currentInnings.extras || { wide: 0, noBall: 0, bye: 0, legBye: 0 };
+      const updatedExtras = {
+        ...currentExtras,
+        wide: type === "Wide" ? currentExtras.wide + penalty : currentExtras.wide,
+        noBall: type === "No Ball" ? currentExtras.noBall + 1 : currentExtras.noBall,
+        bye: type === "Bye" ? currentExtras.bye + penalty : currentExtras.bye,
+        legBye: type === "Leg Bye" ? currentExtras.legBye + penalty : currentExtras.legBye,
+      };
+
+      const newScore = currentInnings.score + penalty;
+
+      const ballObj = {
+        ballNumber: isLegalDelivery ? newOvers : currentInnings.overs,
+        bowlerName: activeBowlerObj.name,
+        batsmanName: striker.name,
+        runs: penalty,
         isWicket: false,
-        isExtra: true,
-        extraType: type,
-        batsmanName: strikerName,
-        bowlerName: bowlerName,
-        text: commentaryText,
-        timestamp: Date.now(),
+        text: `Extra conceded: ${type} (+${penalty} runs).`,
         label: ballLabel,
       };
 
-      const updatedRecentBallsExtra = [...(currentInnings.recentBalls || []).slice(-29), newBallObj];
+      const isDone = checkInningsCompletion(newScore, currentInnings.wickets, newOvers);
 
-      const strikerIndex = currentInnings.batsmen.findIndex((b) => b.id === strikerId);
-      const nonStrikerIndex = currentInnings.batsmen.findIndex((b) => b.id === nonStrikerId);
-      const bowlerIndex = currentInnings.bowlers.findIndex((b) => b.id === activeBowlerId);
-
-      const extrasCountToAdd = isFromBat && type === "No Ball" ? penaltyRuns : totalRunsToAdd;
-
-      const stateUpdates: Record<string, any> = {
-        [`match/cricket/${currentInningsKey}/score`]: increment(totalRunsToAdd),
-        [`match/cricket/${currentInningsKey}/overs`]: newOvers,
-        [`match/cricket/${currentInningsKey}/extras/${extraFieldKey}`]: increment(extrasCountToAdd),
-        [`match/cricket/${currentInningsKey}/recentBalls`]: updatedRecentBallsExtra,
-        ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD"
-          ? { "match/meta/activeGraphic": "LOWER_THIRD" }
-          : {}),
-        ...(isFromBat && (extraRunsRan === 4 || extraRunsRan === 6)
-          ? { "match/meta/currentEvent": extraRunsRan === 4 ? "FOUR" : "SIX" }
-          : {}),
+      const nextInningsState: InningsData = {
+        ...currentInnings,
+        score: newScore,
+        overs: newOvers,
+        runRate: calculateRunRate(newScore, newOvers),
+        extras: updatedExtras,
+        batsmen: updatedBatsmen,
+        bowlers: updatedBowlers,
+        recentBalls: [...(currentInnings.recentBalls || []), ballObj],
+        isCompleted: isDone || currentInnings.isCompleted,
       };
 
-      const previousPaths: Record<string, any> = {
-        [`match/cricket/${currentInningsKey}/score`]: currentInnings.score,
-        [`match/cricket/${currentInningsKey}/overs`]: currentInnings.overs,
-        [`match/cricket/${currentInningsKey}/extras/${extraFieldKey}`]: currentInnings.extras[extraFieldKey],
-        [`match/cricket/${currentInningsKey}/recentBalls`]: currentInnings.recentBalls || [],
-        ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD"
-          ? { "match/meta/activeGraphic": meta.activeGraphic }
-          : {}),
-        "match/meta/currentEvent": meta.currentEvent,
+      const stateUpdates = {
+        [`match/cricket/${currentInningsKey}`]: nextInningsState,
+        "match/meta/updatedAt": Date.now(),
       };
 
-      if (strikerIndex !== -1) {
-        const addBall = type !== "Wide" ? 1 : 0;
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/balls`] = increment(addBall);
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/onStrike`] = !rotateStrike;
+      const previousPaths = {
+        [`match/cricket/${currentInningsKey}`]: currentInnings,
+      };
 
-        if (isFromBat && type === "No Ball" && extraRunsRan > 0) {
-          stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/runs`] = increment(extraRunsRan);
-          if (extraRunsRan === 4) stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/fours`] = increment(1);
-          if (extraRunsRan === 6) stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}/sixes`] = increment(1);
-        }
-
-        previousPaths[`match/cricket/${currentInningsKey}/batsmen/${strikerIndex}`] = currentInnings.batsmen[strikerIndex];
-      }
-
-      if (nonStrikerIndex !== -1) {
-        stateUpdates[`match/cricket/${currentInningsKey}/batsmen/${nonStrikerIndex}/onStrike`] = rotateStrike;
-        previousPaths[`match/cricket/${currentInningsKey}/batsmen/${nonStrikerIndex}`] = currentInnings.batsmen[nonStrikerIndex];
-      }
-
-      if (bowlerIndex !== -1) {
-        const bowlerRunsToAdd = type === "Wide" || type === "No Ball" ? totalRunsToAdd : 0;
-        const { newOvers: bowlerOvers } =
-          type !== "Wide" && type !== "No Ball"
-            ? addBallToOvers(currentInnings.bowlers[bowlerIndex].overs)
-            : { newOvers: currentInnings.bowlers[bowlerIndex].overs };
-
-        if (bowlerRunsToAdd > 0) {
-          stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}/runs`] = increment(bowlerRunsToAdd);
-        }
-        stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}/overs`] = bowlerOvers;
-
-        previousPaths[`match/cricket/${currentInningsKey}/bowlers/${bowlerIndex}`] = currentInnings.bowlers[bowlerIndex];
-      }
-
-      await commitActionAtomic(stateUpdates, `Extra: ${type} + ${extraRunsRan}`, previousPaths);
-      checkInningsCompletion(currentInnings.score + totalRunsToAdd, currentInnings.wickets, newOvers);
+      await commitActionAtomic(stateUpdates, `Extra: ${type}`, previousPaths);
+      setIsExtrasModalOpen(false);
     } catch (error) {
-      console.error("Error adding extras:", error);
-      showToast("Failed to process extras.", "error");
+      console.error("Failed to commit extras:", error);
+      showToast("Error recording extras.", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
   const confirmNewBowler = async (bowlerId: string) => {
-    if (!currentInnings) return;
+    if (!currentInnings || isProcessing) return;
     setIsProcessing(true);
 
     try {
-      const playerInfo = bowlingSquad.find((p) => p.id === bowlerId);
-      if (!playerInfo) {
-        showToast("Invalid bowler selected", "error");
-        setIsProcessing(false);
-        return;
+      let updatedBowlers = (currentInnings.bowlers || []).map((bw: Bowler) => ({
+        ...bw,
+        isActive: bw.id === bowlerId,
+      }));
+
+      const exists = updatedBowlers.some((bw: Bowler) => bw.id === bowlerId);
+      if (!exists) {
+        const playerObj = bowlingSquad.find((p: Player) => p.id === bowlerId);
+        if (playerObj) {
+          updatedBowlers.push({
+            id: playerObj.id,
+            name: playerObj.name,
+            overs: "0.0",
+            maidens: 0,
+            runs: 0,
+            wickets: 0,
+            isActive: true,
+          });
+        }
       }
 
-      const currentActiveIndex = currentInnings.bowlers.findIndex((b) => b.isActive);
-      const existingBowlerIndex = currentInnings.bowlers.findIndex((b) => b.id === bowlerId);
+      lastCompletedOverBowlerIdRef.current = null;
 
-      const stateUpdates: Record<string, any> = {};
-      const previousPaths: Record<string, any> = {};
+      const nextInningsState: InningsData = {
+        ...currentInnings,
+        bowlers: updatedBowlers,
+      };
 
-      if (currentActiveIndex !== -1) {
-        stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${currentActiveIndex}/isActive`] = false;
-        previousPaths[`match/cricket/${currentInningsKey}/bowlers/${currentActiveIndex}`] = currentInnings.bowlers[currentActiveIndex];
-      }
+      const stateUpdates = {
+        [`match/cricket/${currentInningsKey}`]: nextInningsState,
+        "match/meta/updatedAt": Date.now(),
+      };
 
-      if (existingBowlerIndex !== -1) {
-        stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${existingBowlerIndex}/isActive`] = true;
-        previousPaths[`match/cricket/${currentInningsKey}/bowlers/${existingBowlerIndex}`] = currentInnings.bowlers[existingBowlerIndex];
-      } else {
-        const newBowlerIndex = currentInnings.bowlers.length;
-        stateUpdates[`match/cricket/${currentInningsKey}/bowlers/${newBowlerIndex}`] = {
-          id: playerInfo.id,
-          name: playerInfo.name,
-          overs: "0.0",
-          maidens: 0,
-          runs: 0,
-          wickets: 0,
-          isActive: true,
-        };
-        previousPaths[`match/cricket/${currentInningsKey}/bowlers/${newBowlerIndex}`] = null;
-      }
+      const previousPaths = {
+        [`match/cricket/${currentInningsKey}`]: currentInnings,
+      };
 
-      await commitActionAtomic(stateUpdates, "Change Bowler", previousPaths);
+      await commitActionAtomic(stateUpdates, "New Bowler", previousPaths);
       setIsNewBowlerModalOpen(false);
     } catch (error) {
-      console.error("Error changing bowler:", error);
-      showToast("Failed to change bowler.", "error");
+      console.error("Failed to change bowler:", error);
+      showToast("Error updating bowler.", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const startSecondInnings = async (newStrikerId: string, newNonStrikerId: string, newBowlerId: string) => {
-    if (!currentInnings || !cricket) return;
+  const startSecondInnings = async (strikerId: string, nonStrikerId: string, bowlerId: string) => {
+    if (!cricket || isProcessing) return;
     setIsProcessing(true);
 
     try {
-      const chasingTeamKey = bowlingTeamKey;
-      const defendingTeamKey = battingTeamKey;
+      const inn1 = cricket.innings1;
+      const targetScore = (inn1?.score || 0) + 1;
 
-      const chasingSquad = cricket.squads[chasingTeamKey as "teamA" | "teamB"] || [];
-      const defendingSquad = cricket.squads[defendingTeamKey as "teamA" | "teamB"] || [];
+      const chasingTeamKey = inn1?.battingTeam === "teamA" ? "teamB" : "teamA";
+      const defendingTeamKey = inn1?.battingTeam === "teamA" ? "teamA" : "teamB";
 
-      const striker = chasingSquad.find((p) => p.id === newStrikerId);
-      const nonStriker = chasingSquad.find((p) => p.id === newNonStrikerId);
-      const bowler = defendingSquad.find((p) => p.id === newBowlerId);
+      const chasingSquad: Player[] = cricket.squads?.[chasingTeamKey] || [];
+      const defendingSquad: Player[] = cricket.squads?.[defendingTeamKey] || [];
 
-      if (!striker || !nonStriker || !bowler) {
-        showToast("Invalid starting players", "error");
-        setIsProcessing(false);
-        return;
-      }
+      const strikerPlayer = chasingSquad.find((p: Player) => p.id === strikerId);
+      const nonStrikerPlayer = chasingSquad.find((p: Player) => p.id === nonStrikerId);
+      const bowlerPlayer = defendingSquad.find((p: Player) => p.id === bowlerId);
 
-      const targetScore = currentInnings.score + 1;
+      lastCompletedOverBowlerIdRef.current = null;
+      lastOverNumberRef.current = "";
 
-      const innings2Data = {
+      const nextInnings2: InningsData = {
         battingTeam: chasingTeamKey,
         score: 0,
         wickets: 0,
         overs: "0.0",
         runRate: 0,
-        extras: { wide: 0, noBall: 0, bye: 0, legBye: 0 },
         target: targetScore,
-        isCompleted: false,
+        extras: { wide: 0, noBall: 0, bye: 0, legBye: 0 },
         batsmen: [
-          { id: striker.id, name: striker.name, runs: 0, balls: 0, fours: 0, sixes: 0, onStrike: true, isOut: false },
-          { id: nonStriker.id, name: nonStriker.name, runs: 0, balls: 0, fours: 0, sixes: 0, onStrike: false, isOut: false },
+          {
+            id: strikerPlayer?.id || strikerId,
+            name: strikerPlayer?.name || "Striker",
+            runs: 0,
+            balls: 0,
+            fours: 0,
+            sixes: 0,
+            onStrike: true,
+            isOut: false,
+          },
+          {
+            id: nonStrikerPlayer?.id || nonStrikerId,
+            name: nonStrikerPlayer?.name || "Non-Striker",
+            runs: 0,
+            balls: 0,
+            fours: 0,
+            sixes: 0,
+            onStrike: false,
+            isOut: false,
+          },
         ],
-        bowlers: [{ id: bowler.id, name: bowler.name, overs: "0.0", maidens: 0, runs: 0, wickets: 0, isActive: true }],
+        bowlers: [
+          {
+            id: bowlerPlayer?.id || bowlerId,
+            name: bowlerPlayer?.name || "Bowler",
+            overs: "0.0",
+            maidens: 0,
+            runs: 0,
+            wickets: 0,
+            isActive: true,
+          },
+        ],
         recentBalls: [],
         fallOfWickets: [],
+        isCompleted: false,
       };
 
-      await commitActionAtomic(
-        {
-          "match/cricket/innings1/isCompleted": true,
-          "match/cricket/currentInnings": 2,
-          "match/cricket/innings2": innings2Data,
-        },
-        "Start 2nd Innings",
-        {
-          "match/cricket/innings1/isCompleted": false,
-          "match/cricket/currentInnings": 1,
-          "match/cricket/innings2": cricket.innings2 || null,
-        }
-      );
+      const stateUpdates = {
+        "match/cricket/currentInnings": 2,
+        "match/cricket/innings1/isCompleted": true,
+        "match/cricket/innings2": nextInnings2,
+        "match/meta/activeGraphic": "LOWER_THIRD",
+        "match/meta/updatedAt": Date.now(),
+      };
 
+      const previousPaths = {
+        "match/cricket": cricket,
+      };
+
+      await commitActionAtomic(stateUpdates, "Start 2nd Innings", previousPaths);
       setIsInningsBreakModalOpen(false);
-      showToast("Second Innings Started!", "success");
+      showToast("2nd Innings Started!", "success");
     } catch (error) {
-      console.error("Error starting second innings:", error);
-      showToast("Failed to start second innings.", "error");
+      console.error("Failed to start 2nd innings:", error);
+      showToast("Error starting 2nd innings.", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
   return {
+    currentInnings,
+    battingTeamKey,
+    bowlingTeamKey,
+    battingTeamName,
+    bowlingTeamName,
+    battingSquad,
+    bowlingSquad,
+    activeBatsmen,
+    availableBatsmen,
+    activeBowlerObj,
     isProcessing,
     isWicketModalOpen,
     setIsWicketModalOpen,
@@ -626,19 +733,8 @@ useEffect(() => {
     setIsNewBowlerModalOpen,
     isInningsBreakModalOpen,
     setIsInningsBreakModalOpen,
-    currentInnings,
-    battingTeamName,
-    bowlingTeamName,
-    battingTeamKey,
-    bowlingTeamKey,
-    battingSquad,
-    activeBatsmen,
-    availableBatsmen,
-    strikerId,
-    nonStrikerId,
-    activeBowlerObj,
-    bowlingSquad,
     handleRuns,
+    handleSwapStrike,
     confirmWicket,
     confirmExtras,
     confirmNewBowler,

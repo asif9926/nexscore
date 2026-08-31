@@ -21,77 +21,134 @@ const calculateEcon = (runs: number, oversStr: string) => {
 export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
   const { meta, cricket, football } = matchData;
 
-  if (meta.sport !== "cricket" || !cricket) {
-    const half1 = football?.half1 || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
-    const half2 = football?.half2 || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
+  // components/public-view/tabs/ScorecardTab.tsx-এর ফুটবল অংশে নিচের কোড ব্লকটি ব্যবহার করুন:
 
-    return (
-      <div className="space-y-5">
-        {/* Match Summary Card */}
-        <div className="rounded-2xl border border-border bg-panel p-5 shadow-xl sm:rounded-3xl sm:p-6">
-          <h3 className="mb-4 flex items-center gap-2 text-sm sm:text-base font-bold text-fg border-b border-border pb-3">
-            <Trophy size={16} className="text-pitch-green" />
-            <span>Match Summary • Half Breakdown</span>
-          </h3>
+if (meta.sport !== "cricket" || !cricket) {
+  const half1 = football?.half1 || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
+  const half2 = football?.half2 || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
+  const allEvents = football?.events || [];
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm">
-            {/* 1st Half */}
-            <div className="rounded-xl border border-border bg-ink p-4 space-y-2">
-              <div className="flex justify-between font-bold text-pitch-green text-xs uppercase tracking-wider">
-                <span>1st Half</span>
-                <span>Possession: {half1.possession.teamA}% - {half1.possession.teamB}%</span>
-              </div>
-              <div className="flex justify-between items-center text-fg font-semibold pt-1">
-                <span>{meta.teamA}</span>
-                <span className="font-score text-lg text-electric">{half1.goalsA}</span>
-              </div>
-              <div className="flex justify-between items-center text-fg font-semibold">
-                <span>{meta.teamB}</span>
-                <span className="font-score text-lg text-signal-gold">{half1.goalsB}</span>
-              </div>
+  const goalsTeamA = allEvents.filter((ev: any) => ev.type === "goal" && ev.team === "teamA");
+  const goalsTeamB = allEvents.filter((ev: any) => ev.type === "goal" && ev.team === "teamB");
+
+  return (
+    <div className="space-y-5">
+      {/* ⚽ Goal Scorers & Assists Card (FotMob / Premier League Style) */}
+      <div className="rounded-2xl border border-border bg-panel p-5 shadow-xl sm:rounded-3xl sm:p-6">
+        <h3 className="mb-4 flex items-center gap-2 text-sm sm:text-base font-bold text-fg border-b border-border pb-3">
+          <Trophy size={16} className="text-pitch-green" />
+          <span>Goal Scorers &amp; Assists</span>
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Team A Goals */}
+          <div className="rounded-xl border border-border bg-ink p-4 space-y-2.5">
+            <div className="font-bold text-electric text-xs uppercase tracking-wider flex justify-between">
+              <span>{meta.teamA}</span>
+              <span>{goalsTeamA.length} Goals</span>
             </div>
+            {goalsTeamA.length === 0 ? (
+              <p className="text-xs text-fg-faint italic">No goals scored yet</p>
+            ) : (
+              <ul className="space-y-1.5 text-xs">
+                {goalsTeamA.map((g: any) => (
+                  <li key={g.id} className="flex items-center justify-between text-fg">
+                    <span className="font-semibold">⚽ {g.scorerName}</span>
+                    <span className="text-fg-muted font-mono">
+                      {g.minute}' {g.assistName ? `(ast: ${g.assistName})` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-            {/* 2nd Half */}
-            <div className="rounded-xl border border-border bg-ink p-4 space-y-2">
-              <div className="flex justify-between font-bold text-electric text-xs uppercase tracking-wider">
-                <span>2nd Half</span>
-                <span>Possession: {half2.possession.teamA}% - {half2.possession.teamB}%</span>
-              </div>
-              <div className="flex justify-between items-center text-fg font-semibold pt-1">
-                <span>{meta.teamA}</span>
-                <span className="font-score text-lg text-electric">{half2.goalsA}</span>
-              </div>
-              <div className="flex justify-between items-center text-fg font-semibold">
-                <span>{meta.teamB}</span>
-                <span className="font-score text-lg text-signal-gold">{half2.goalsB}</span>
-              </div>
+          {/* Team B Goals */}
+          <div className="rounded-xl border border-border bg-ink p-4 space-y-2.5">
+            <div className="font-bold text-signal-gold text-xs uppercase tracking-wider flex justify-between">
+              <span>{meta.teamB}</span>
+              <span>{goalsTeamB.length} Goals</span>
             </div>
+            {goalsTeamB.length === 0 ? (
+              <p className="text-xs text-fg-faint italic">No goals scored yet</p>
+            ) : (
+              <ul className="space-y-1.5 text-xs">
+                {goalsTeamB.map((g: any) => (
+                  <li key={g.id} className="flex items-center justify-between text-fg">
+                    <span className="font-semibold">⚽ {g.scorerName}</span>
+                    <span className="text-fg-muted font-mono">
+                      {g.minute}' {g.assistName ? `(ast: ${g.assistName})` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Disciplinary Summary */}
-        <div className="rounded-2xl border border-border bg-panel p-5 shadow-xl sm:rounded-3xl sm:p-6">
-          <h3 className="mb-3 text-xs sm:text-sm font-bold uppercase tracking-wider text-fg-muted">
-            Disciplinary Cards
-          </h3>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="rounded-xl border border-border bg-ink p-3 text-center space-y-1">
-              <div className="font-bold text-fg">{meta.teamA}</div>
-              <div className="text-fg-muted">
-                🟨 Yellow: <strong className="text-signal-gold">{football?.yellowCardsA || 0}</strong> • 🟥 Red: <strong className="text-crimson">{football?.redCardsA || 0}</strong>
-              </div>
+      {/* Match Summary & Half Breakdown */}
+      <div className="rounded-2xl border border-border bg-panel p-5 shadow-xl sm:rounded-3xl sm:p-6">
+        <h3 className="mb-4 text-xs sm:text-sm font-bold uppercase tracking-wider text-fg-muted border-b border-border pb-3">
+          Half Breakdown &amp; Possession
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm">
+          <div className="rounded-xl border border-border bg-ink p-4 space-y-2">
+            <div className="flex justify-between font-bold text-pitch-green text-xs uppercase tracking-wider">
+              <span>1st Half</span>
+              <span>Possession: {half1.possession.teamA}% - {half1.possession.teamB}%</span>
             </div>
-            <div className="rounded-xl border border-border bg-ink p-3 text-center space-y-1">
-              <div className="font-bold text-fg">{meta.teamB}</div>
-              <div className="text-fg-muted">
-                🟨 Yellow: <strong className="text-signal-gold">{football?.yellowCardsB || 0}</strong> • 🟥 Red: <strong className="text-crimson">{football?.redCardsB || 0}</strong>
-              </div>
+            <div className="flex justify-between items-center text-fg font-semibold pt-1">
+              <span>{meta.teamA}</span>
+              <span className="font-score text-lg text-electric">{half1.goalsA}</span>
+            </div>
+            <div className="flex justify-between items-center text-fg font-semibold">
+              <span>{meta.teamB}</span>
+              <span className="font-score text-lg text-signal-gold">{half1.goalsB}</span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-ink p-4 space-y-2">
+            <div className="flex justify-between font-bold text-electric text-xs uppercase tracking-wider">
+              <span>2nd Half</span>
+              <span>Possession: {half2.possession.teamA}% - {half2.possession.teamB}%</span>
+            </div>
+            <div className="flex justify-between items-center text-fg font-semibold pt-1">
+              <span>{meta.teamA}</span>
+              <span className="font-score text-lg text-electric">{half2.goalsA}</span>
+            </div>
+            <div className="flex justify-between items-center text-fg font-semibold">
+              <span>{meta.teamB}</span>
+              <span className="font-score text-lg text-signal-gold">{half2.goalsB}</span>
             </div>
           </div>
         </div>
       </div>
-    );
-  }
+
+      {/* Disciplinary Summary */}
+      <div className="rounded-2xl border border-border bg-panel p-5 shadow-xl sm:rounded-3xl sm:p-6">
+        <h3 className="mb-3 text-xs sm:text-sm font-bold uppercase tracking-wider text-fg-muted">
+          Disciplinary Summary
+        </h3>
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="rounded-xl border border-border bg-ink p-3 text-center space-y-1">
+            <div className="font-bold text-fg">{meta.teamA}</div>
+            <div className="text-fg-muted">
+              🟨 Yellow: <strong className="text-signal-gold">{football?.yellowCardsA || 0}</strong> • 🟥 Red: <strong className="text-crimson">{football?.redCardsA || 0}</strong>
+            </div>
+          </div>
+          <div className="rounded-xl border border-border bg-ink p-3 text-center space-y-1">
+            <div className="font-bold text-fg">{meta.teamB}</div>
+            <div className="text-fg-muted">
+              🟨 Yellow: <strong className="text-signal-gold">{football?.yellowCardsB || 0}</strong> • 🟥 Red: <strong className="text-crimson">{football?.redCardsB || 0}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
   const [activeInningsTab, setActiveInningsTab] = useState<1 | 2>(cricket.currentInnings || 1);
 
   const inn1 = cricket.innings1;

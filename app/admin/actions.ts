@@ -1,6 +1,7 @@
 "use server";
 
-import { adminFirestore } from "@/lib/firebase/admin";
+import { getAdminApp, adminFirestore } from "@/lib/firebase/admin";
+import { getAuth } from "firebase-admin/auth";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
@@ -22,29 +23,48 @@ export async function getMatchHistory() {
   }
 }
 
-// ২. সুরক্ষিতভাবে ডেটাবেস থেকে ম্যাচ ডিলিট করার ফাংশন (AuthToken Cookie Verified)
-export async function deleteMatchAction(id: string) {
+// ২. সুরক্ষিতভাবে ডেটাবেস থেকে ম্যাচ ডিলিট করার ফাংশন (Direct ID Token + Session Cookie Verification)
+export async function deleteMatchAction(id: string, clientToken?: string) {
   try {
     const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("AuthToken")?.value;
+    const token = clientToken || cookieStore.get("AuthToken")?.value;
 
-    // সেশন কুকি না থাকলে একশন ব্লক করবে
-    if (!sessionCookie) {
-      console.warn("Delete rejected: Unauthorized request without AuthToken.");
-      return { success: false, error: "Unauthorized access" };
+    if (!token) {
+      console.warn("Delete match rejected: No token found.");
+      return { success: false, error: "Unauthorized access: Session token missing." };
+    }
+
+    const authAdmin = getAuth(getAdminApp());
+    let isVerified = false;
+
+    // ১. ক্লায়েন্ট আইডি টোকেন যাচাই (সবচেয়ে নির্ভরযোগ্য)
+    try {
+      await authAdmin.verifyIdToken(token, true);
+      isVerified = true;
+    } catch {
+      // ২. সেশন কুকি হিসেবে ফলব্যাক যাচাই
+      try {
+        await authAdmin.verifySessionCookie(token, true);
+        isVerified = true;
+      } catch {
+        isVerified = false;
+      }
+    }
+
+    if (!isVerified) {
+      return { success: false, error: "Invalid or expired session. Please log in again." };
     }
 
     // Firestore থেকে ম্যাচ রেকর্ড ডিলিট
     await adminFirestore.collection("matches_history").doc(id).delete();
     
-    // ক্যাশ ক্লিয়ার করে পেজ রিফ্রেশ
     revalidatePath("/admin");
     revalidatePath("/match-history");
     revalidatePath("/");
     
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting match:", error);
-    return { success: false, error: "Failed to delete match record." };
+    return { success: false, error: error?.message || "Failed to delete match record." };
   }
 }

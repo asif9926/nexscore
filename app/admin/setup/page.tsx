@@ -2,12 +2,25 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, Trophy, X, Crown, Shield, Sparkles } from "lucide-react";
+import { 
+  ChevronRight, 
+  ChevronLeft, 
+  Trophy, 
+  X, 
+  Crown, 
+  Shield, 
+  Sparkles, 
+  Radio, 
+  ArrowRight,
+  ShieldAlert
+} from "lucide-react";
 import { Player } from "@/lib/types/match";
 import { ref, set } from "firebase/database";
 import { rtdb } from "@/lib/firebase/client";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/lib/context/ToastContext";
+import { useMatchData } from "@/lib/context/MatchDataContext";
+import Link from "next/link";
 
 interface SetupState {
   sport: "cricket" | "football";
@@ -27,6 +40,8 @@ const OVERS_PRESETS = [5, 10, 15, 20, 50];
 export default function PreMatchWizard() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { matchData, loading: matchLoading } = useMatchData();
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [customOvers, setCustomOvers] = useState(false);
@@ -43,6 +58,59 @@ export default function PreMatchWizard() {
     maxOvers: 20,
     openers: { striker: "", nonStriker: "", bowler: "" },
   });
+
+  const isLive = matchData?.meta?.status === "live";
+
+  // 🛡️ ১. লোডিং স্টেট গার্ড
+  if (matchLoading) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-ink text-fg">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-electric" />
+        <p className="mt-3 text-xs font-bold uppercase tracking-wider text-fg-muted">Checking live status...</p>
+      </div>
+    );
+  }
+
+  // 🛡️ ২. লাইভ ম্যাচ লক গার্ড (ম্যাচ লাইভ থাকলে সেটআপ পেজ সম্পূর্ণ ব্লক থাকবে)
+  if (isLive && matchData?.meta) {
+    return (
+      <div className="flex min-h-[75vh] flex-col items-center justify-center px-4 py-10 text-center">
+        <div className="w-full max-w-md space-y-5 rounded-3xl border border-crimson/30 bg-panel p-6 shadow-2xl sm:p-8">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-crimson/40 bg-crimson/15 text-crimson shadow-lg shadow-crimson/20">
+            <Radio size={30} className="animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-crimson/40 bg-crimson/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-crimson">
+              <span className="h-2 w-2 animate-ping rounded-full bg-crimson" />
+              Match Currently Live
+            </div>
+            <h2 className="text-xl font-bold text-fg sm:text-2xl">
+              {matchData.meta.teamA} vs {matchData.meta.teamB}
+            </h2>
+            <p className="text-xs leading-relaxed text-fg-muted">
+              বর্তমানে একটি ম্যাচ সরাসরি সম্প্রচারিত হচ্ছে। নতুন ম্যাচ সেটআপ করতে হলে আগে কন্ট্রোল রুম থেকে চলমান ম্যাচটি শেষ (Archive) করতে হবে।
+            </p>
+          </div>
+
+          <div className="space-y-2.5 pt-2">
+            <Link href="/admin/control" className="block w-full">
+              <button className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-crimson px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-crimson/25 transition-all hover:opacity-90 active:scale-95">
+                <span>Enter Control Room</span>
+                <ArrowRight size={15} />
+              </button>
+            </Link>
+
+            <Link href="/admin" className="block w-full">
+              <button className="flex min-h-[44px] w-full items-center justify-center rounded-xl border border-border bg-ink px-5 py-2.5 text-xs font-bold text-fg-muted transition-all hover:bg-panel-raised hover:text-fg">
+                Back to Dashboard
+              </button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const isCricket = setupData.sport === "cricket";
   const TOTAL_STEPS = isCricket ? 4 : 2;
@@ -121,42 +189,40 @@ export default function PreMatchWizard() {
     }
   };
 
-  // app/admin/setup/page.tsx-এ handleAutoFillSquad রিপ্লেস করুন
-const handleAutoFillSquad = (team: "A" | "B") => {
-  const defaultCricketRoles = [
-    "Batsman", "Batsman", "Batsman", "Batsman",
-    "All-rounder", "All-rounder", "All-rounder",
-    "Bowler", "Bowler", "Bowler", "Bowler"
-  ];
-  const defaultFootballRoles = [
-    "Goalkeeper", "Defender", "Defender", "Defender", "Defender",
-    "Midfielder", "Midfielder", "Midfielder",
-    "Forward", "Forward", "Forward"
-  ];
+  const handleAutoFillSquad = (team: "A" | "B") => {
+    const defaultCricketRoles = [
+      "Batsman", "Batsman", "Batsman", "Batsman",
+      "All-rounder", "All-rounder", "All-rounder",
+      "Bowler", "Bowler", "Bowler", "Bowler"
+    ];
+    const defaultFootballRoles = [
+      "Goalkeeper", "Defender", "Defender", "Defender", "Defender",
+      "Midfielder", "Midfielder", "Midfielder",
+      "Forward", "Forward", "Forward"
+    ];
 
-  const rolesList = isCricket ? defaultCricketRoles : defaultFootballRoles;
-  
-  // ইউজার স্টেপ ১-এ যে টিম নাম দিয়েছে তা ব্যবহার করবে, না থাকলে Team A / Team B
-  const teamLabel = team === "A" 
-    ? (setupData.teamA.trim() || "Team A") 
-    : (setupData.teamB.trim() || "Team B");
+    const rolesList = isCricket ? defaultCricketRoles : defaultFootballRoles;
+    
+    const teamLabel = team === "A" 
+      ? (setupData.teamA.trim() || "Team A") 
+      : (setupData.teamB.trim() || "Team B");
 
-  const genericSquad: Player[] = Array.from({ length: 11 }, (_, i) => ({
-    id: `p_${team.toLowerCase()}_${Date.now()}_${i + 1}`,
-    name: `${teamLabel} - P${i + 1}`, // যেমন: "Dhaka Titans - P1" বা "Team A - P1"[cite: 2]
-    role: (rolesList[i] || (isCricket ? "Batsman" : "Forward")) as any,
-    isCaptain: i === 0,
-    isWicketKeeper: isCricket && i === 2,
-  }));
+    const genericSquad: Player[] = Array.from({ length: 11 }, (_, i) => ({
+      id: `p_${team.toLowerCase()}_${Date.now()}_${i + 1}`,
+      name: `${teamLabel} - P${i + 1}`,
+      role: (rolesList[i] || (isCricket ? "Batsman" : "Forward")) as any,
+      isCaptain: i === 0,
+      isWicketKeeper: isCricket && i === 2,
+    }));
 
-  if (team === "A") {
-    setSetupData((prev) => ({ ...prev, squadA: genericSquad }));
-    showToast(`${teamLabel} squad auto-filled!`, "info");
-  } else {
-    setSetupData((prev) => ({ ...prev, squadB: genericSquad }));
-    showToast(`${teamLabel} squad auto-filled!`, "info");
-  }
-};
+    if (team === "A") {
+      setSetupData((prev) => ({ ...prev, squadA: genericSquad }));
+      showToast(`${teamLabel} squad auto-filled!`, "info");
+    } else {
+      setSetupData((prev) => ({ ...prev, squadB: genericSquad }));
+      showToast(`${teamLabel} squad auto-filled!`, "info");
+    }
+  };
 
   const removePlayer = (team: "A" | "B", id: string) => {
     if (team === "A") setSetupData((prev) => ({ ...prev, squadA: prev.squadA.filter((p) => p.id !== id) }));
@@ -173,6 +239,11 @@ const handleAutoFillSquad = (team: "A" | "B") => {
   const bowlingSquad = bowlingTeamKey === "teamA" ? setupData.squadA : setupData.squadB;
 
   const handleStartMatch = async () => {
+    if (isLive) {
+      showToast("A match is already live! Please archive it before starting a new one.", "error");
+      return;
+    }
+
     if (isCricket && !isStep4Valid) {
       if (setupData.openers.striker === setupData.openers.nonStriker) {
         showToast("Striker and Non-Striker must be different players.", "error");
@@ -185,22 +256,22 @@ const handleAutoFillSquad = (team: "A" | "B") => {
     setLoading(true);
     try {
       const matchState: any = {
-  meta: {
-    sport: setupData.sport,
-    status: "live",
-    teamA: setupData.teamA.trim(),
-    teamB: setupData.teamB.trim(),
-    tournament: setupData.tournament.trim() || "Local Tournament",
-    venue: setupData.venue.trim() || "",
-    activeTheme: setupData.sport === "football" ? "premier" : "sky",
-    activeGraphic: "LOWER_THIRD",
-    showScoreboard: true,
-    showLogo: false,
-    currentEvent: null,
-    updatedAt: Date.now(),
-  },
-  presence: { admins: {}, lastPing: Date.now() },
-};
+        meta: {
+          sport: setupData.sport,
+          status: "live",
+          teamA: setupData.teamA.trim(),
+          teamB: setupData.teamB.trim(),
+          tournament: setupData.tournament.trim() || "Local Tournament",
+          venue: setupData.venue.trim() || "",
+          activeTheme: setupData.sport === "football" ? "premier" : "sky",
+          activeGraphic: "LOWER_THIRD",
+          showScoreboard: true,
+          showLogo: false,
+          currentEvent: null,
+          updatedAt: Date.now(),
+        },
+        presence: { admins: {}, lastPing: Date.now() },
+      };
 
       if (isCricket) {
         const striker = battingSquad.find((p) => p.id === setupData.openers.striker);

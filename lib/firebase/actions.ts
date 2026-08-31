@@ -1,15 +1,11 @@
-// lib/firebase/actions.ts
 import { ref, update, push, get, query, orderByKey, limitToLast } from "firebase/database";
 import { rtdb } from "./client";
 
 const ACTION_LOG_PATH = "match_actionLog";
-
-// এক ম্যাচে ঘরে কতগুলো undo-log entry রাখা হবে তার cap — অ্যাডমিনের রিড payload
-// আর ডাটাবেজ সাইজ দুটোকেই বাউন্ডেড রাখে।
-const MAX_ACTION_LOG_ENTRIES = 20;
+const MAX_ACTION_LOG_ENTRIES = 25;
 
 /**
- * Atomic Update: ডেটা আপডেট এবং ActionLog পুশ একসাথেই হবে
+ * Atomic Commit: ডেটা আপডেট এবং ActionLog পুশ একই ট্রানজ্যাকশনে সম্পন্ন করে
  */
 export const commitActionAtomic = async (
   stateUpdates: Record<string, any>,
@@ -18,7 +14,7 @@ export const commitActionAtomic = async (
 ) => {
   const newLogKey = push(ref(rtdb, ACTION_LOG_PATH)).key;
 
-  const updates = {
+  const updates: Record<string, any> = {
     ...stateUpdates,
     [`${ACTION_LOG_PATH}/${newLogKey}`]: {
       timestamp: Date.now(),
@@ -29,7 +25,6 @@ export const commitActionAtomic = async (
 
   const result = await update(ref(rtdb), updates);
 
-  // Unhandled Promise ফিক্স করার জন্য try-catch এবং await ব্যবহার করা হলো
   try {
     await pruneActionLog();
   } catch (err) {
@@ -56,7 +51,7 @@ const pruneActionLog = async () => {
 };
 
 /**
- * Undo Logic: সবশেষ লগ থেকে আগের স্টেট রিস্টোর করা
+ * Undo Engine: সর্বশেষ লগ থেকে সম্পূর্ণ স্ন্যাপশট নিখুঁতভাবে রিস্টোর করে
  */
 export const undoLastAction = async () => {
   const logQuery = query(ref(rtdb, ACTION_LOG_PATH), orderByKey(), limitToLast(1));
@@ -66,14 +61,14 @@ export const undoLastAction = async () => {
 
   const logEntry = snapshot.val();
   const logKey = Object.keys(logEntry)[0];
-
-  // স্ট্রিং থেকে পার্স করে আবার অবজেক্টে (পাথগুলোতে) রূপান্তর করে নিচ্ছি
   const previousState = JSON.parse(logEntry[logKey].previousState);
 
-  const updates = {
-    ...previousState,
-    [`${ACTION_LOG_PATH}/${logKey}`]: null,
-  };
+  const updates: Record<string, any> = {};
+
+  for (const [path, val] of Object.entries(previousState)) {
+    updates[path] = val === undefined ? null : val;
+  }
+  updates[`${ACTION_LOG_PATH}/${logKey}`] = null;
 
   return update(ref(rtdb), updates);
 };

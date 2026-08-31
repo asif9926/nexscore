@@ -14,7 +14,6 @@ export default function MatchResultCard({ match }: Props) {
   const teamA = match.teamA || match.meta?.teamA || match.fullSnapshot?.meta?.teamA || "Team A";
   const teamB = match.teamB || match.meta?.teamB || match.fullSnapshot?.meta?.teamB || "Team B";
 
-  // টুর্নামেন্ট নাম: যদি অ্যাডমিন দিয়ে থাকে তবে সেটাই দেখাবে, না দিলে fallback "Local Tournament"
   const rawTournament = match.tournament || match.meta?.tournament || match.fullSnapshot?.meta?.tournament;
   const tournament = rawTournament && rawTournament.trim() !== "" ? rawTournament.trim() : "Local Tournament";
 
@@ -36,7 +35,7 @@ export default function MatchResultCard({ match }: Props) {
   const inn1Team = inn1?.battingTeam === "teamA" ? teamA : teamB;
   const inn2Team = inn1?.battingTeam === "teamA" ? teamB : teamA;
 
-  // ডায়নামিক রেজাল্ট ক্যালকুলেশন (যদি ডাটাবেজে আগে থেকে না থাকে)
+  // 🎯 ডাইনামিক রেজাল্ট স্টেটমেন্ট (কাস্টম ও ডিফল্ট স্কোয়াড সাইজ হ্যান্ডলিং)
   const getResultText = () => {
     if (match.finalResult && match.finalResult !== "Match Completed") {
       return match.finalResult;
@@ -44,9 +43,13 @@ export default function MatchResultCard({ match }: Props) {
 
     if (isCricket && cricketSnap) {
       const targetScore = (inn1?.score || 0) + 1;
+      const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
+      const squadCount = cricketSnap.squads?.[chasingSquadKey]?.length || 11;
+      const maxWickets = Math.max(1, squadCount - 1);
+
       if (inn2) {
         if (inn2.score >= targetScore) {
-          const wkts = 10 - (inn2.wickets || 0);
+          const wkts = Math.max(0, maxWickets - (inn2.wickets || 0));
           return `${inn2Team} won by ${wkts} wicket${wkts > 1 ? "s" : ""}`;
         }
         const diff = (inn1?.score || 0) - inn2.score;
@@ -76,7 +79,6 @@ export default function MatchResultCard({ match }: Props) {
   return (
     <div className="group flex min-w-0 flex-col justify-between space-y-3.5 rounded-2xl border border-border bg-panel p-4 shadow-xl transition-all hover:border-electric/40 sm:rounded-3xl sm:p-5">
       <div className="min-w-0">
-        {/* Top Header: Tournament Name & Date */}
         <div className="mb-3.5 flex min-w-0 items-center justify-between gap-2 text-xs text-fg-muted">
           <span className="min-w-0 truncate rounded-full border border-electric/25 bg-electric/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-electric sm:text-[11px]">
             {tournament}
@@ -86,7 +88,6 @@ export default function MatchResultCard({ match }: Props) {
           </span>
         </div>
 
-        {/* Venue (if present) */}
         {venue && (
           <div className="mb-3 flex items-center gap-1 text-[11px] text-fg-muted truncate">
             <MapPin size={11} className="shrink-0 text-fg-faint" />
@@ -94,10 +95,8 @@ export default function MatchResultCard({ match }: Props) {
           </div>
         )}
 
-        {/* Cricket Score Row */}
         {isCricket ? (
           <div className="min-w-0 space-y-2 rounded-xl bg-ink/50 p-3 border border-border/40">
-            {/* 1st Innings */}
             <div className="flex min-w-0 items-center justify-between gap-2 text-sm font-bold text-fg">
               <span className="flex min-w-0 items-center gap-1.5 truncate">
                 <span className="shrink-0 text-sm">🏏</span>
@@ -111,7 +110,6 @@ export default function MatchResultCard({ match }: Props) {
               </span>
             </div>
 
-            {/* 2nd Innings */}
             <div className="flex min-w-0 items-center justify-between gap-2 text-sm font-bold text-fg">
               <span className="flex min-w-0 items-center gap-1.5 truncate">
                 <span className="shrink-0 text-sm">⚡</span>
@@ -132,7 +130,6 @@ export default function MatchResultCard({ match }: Props) {
             </div>
           </div>
         ) : (
-          /* Football Score Row */
           <div className="min-w-0 space-y-2 rounded-xl bg-ink/50 p-3 border border-border/40">
             <div className="flex min-w-0 items-center justify-between gap-2 text-sm font-bold text-fg">
               <span className="flex min-w-0 items-center gap-1.5 truncate">
@@ -153,14 +150,12 @@ export default function MatchResultCard({ match }: Props) {
           </div>
         )}
 
-        {/* Final Result / Winner Chip */}
         <div className="mt-3 flex min-w-0 items-center gap-2 rounded-xl border border-signal-gold/30 bg-signal-gold/10 p-2.5 text-xs font-bold text-signal-gold">
           <Trophy className="h-3.5 w-3.5 shrink-0 text-signal-gold" />
           <span className="min-w-0 truncate">{finalResult}</span>
         </div>
       </div>
 
-      {/* Button: View Scorecard */}
       <div className="border-t border-border pt-3">
         <Link href={`/match-history/${match.id}`} className="block">
           <button className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-full border border-border bg-ink text-xs font-bold text-fg shadow-sm transition-colors group-hover:bg-panel-raised group-hover:border-electric/40">

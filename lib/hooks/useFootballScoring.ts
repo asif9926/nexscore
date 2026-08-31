@@ -1,220 +1,250 @@
 "use client";
 
 import { useState } from "react";
-import { increment } from "firebase/database";
 import { commitActionAtomic } from "@/lib/firebase/actions";
-import { useFootballClock } from "@/lib/hooks/useFootballClock";
-import type { FootballCard, FootballEvent, MatchData } from "@/lib/types/match";
+import { useToast } from "@/lib/context/ToastContext";
+import { useFootballClock } from "./useFootballClock";
+import type { MatchData } from "@/lib/types/match";
 
 export function useFootballScoring(matchData: MatchData | null) {
+  const { showToast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const meta = matchData?.meta;
   const football = matchData?.football;
-
-  // নোট: hook conditionally কল করা যায় না, তাই matchData null থাকলেও এটা সবসময় কল হবে —
-  // useFootballClock নিজেই undefined football সেফভাবে হ্যান্ডেল করে।
   const footballClock = useFootballClock(football);
 
-  // ম্যাচ ক্লক চালু/বন্ধ — epoch-based, প্রতি সেকেন্ডে DB write করে না
+  // ১. টাইমার টগল (স্টার্ট / পজ)
   const handleToggleTimer = async () => {
     if (!football || isProcessing) return;
     setIsProcessing(true);
+
     try {
-      if (football.isRunning) {
-        const elapsed =
-          (football.elapsedSeconds || 0) + (Date.now() - (football.startedAt || Date.now())) / 1000;
-        await commitActionAtomic(
-          {
-            "match/football/isRunning": false,
-            "match/football/startedAt": null,
-            "match/football/elapsedSeconds": elapsed,
-          },
-          "Pause Timer",
-          {
-            "match/football/isRunning": true,
-            "match/football/startedAt": football.startedAt,
-            "match/football/elapsedSeconds": football.elapsedSeconds || 0,
-          }
-        );
+      const isCurrentlyRunning = !!football.isRunning;
+      const now = Date.now();
+
+      let updates: Record<string, any> = {};
+
+      if (isCurrentlyRunning) {
+        // পজ করা হচ্ছে — বর্তমান পর্যন্ত অতিক্রান্ত সেকেন্ড হিসেব করে সেভ
+        const additional = football.startedAt ? Math.floor((now - football.startedAt) / 1000) : 0;
+        const totalElapsed = (football.elapsedSeconds || 0) + additional;
+
+        updates = {
+          "match/football/isRunning": false,
+          "match/football/startedAt": null,
+          "match/football/elapsedSeconds": totalElapsed,
+          "match/meta/updatedAt": now,
+        };
       } else {
-        await commitActionAtomic(
-          { "match/football/isRunning": true, "match/football/startedAt": Date.now() },
-          "Start Timer",
-          { "match/football/isRunning": false, "match/football/startedAt": football.startedAt || null }
-        );
-      }
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const currentMatchMinute = () => {
-    const base = football?.elapsedSeconds || 0;
-    const live =
-      football?.isRunning && football?.startedAt ? base + (Date.now() - football.startedAt) / 1000 : base;
-    return Math.floor(live / 60);
-  };
-
-  const pushFootballEvent = (type: FootballEvent["type"], team: "teamA" | "teamB"): FootballEvent => ({
-    id: `ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    type,
-    team,
-    minute: currentMatchMinute(),
-    timestamp: Date.now(),
-  });
-
-  const clearOverlayEvent = (after: string) =>
-    setTimeout(
-      () => commitActionAtomic({ "match/meta/currentEvent": null }, "Clear Event", { "match/meta/currentEvent": after }),
-      4000
-    );
-
-  const handleFootballGoal = async (team: "A" | "B") => {
-    if (!football || !meta || isProcessing) return;
-    setIsProcessing(true);
-    try {
-      const field = team === "A" ? "scoreA" : "scoreB";
-      const teamKey = team === "A" ? "teamA" : "teamB";
-      const halfKey = football.currentHalf === 2 ? "half2" : "half1";
-      const halfGoalsField = team === "A" ? "goalsA" : "goalsB";
-      
-      const newEvent = pushFootballEvent("goal", teamKey);
-      const newEventIndex = football.events ? football.events.length : 0;
-
-      await commitActionAtomic(
-  {
-    [`match/football/${field}`]: increment(1),
-    [`match/football/${halfKey}/${halfGoalsField}`]: increment(1),
-    [`match/football/events/${newEventIndex}`]: newEvent,
-    // যদি হাফটাইম পোস্টার অন থাকে, গোল হওয়ার সাথে সাথে লোয়ার-থার্ডে ব্যাক করবে
-    ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD" 
-      ? { "match/meta/activeGraphic": "LOWER_THIRD" } 
-      : {}),
-    "match/meta/currentEvent": "GOAL",
-  },
-  `Goal Team ${team}`,
-  {
-    [`match/football/${field}`]: football[field] || 0,
-    [`match/football/${halfKey}/${halfGoalsField}`]: football[halfKey]?.[halfGoalsField] || 0,
-    [`match/football/events/${newEventIndex}`]: null,
-    ...(meta.activeGraphic && meta.activeGraphic !== "LOWER_THIRD" 
-      ? { "match/meta/activeGraphic": meta.activeGraphic } 
-      : {}),
-    "match/meta/currentEvent": meta.currentEvent,
-  }
-);
-
-
-      clearOverlayEvent("GOAL");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleFootballCard = async (team: "A" | "B", cardType: "yellow" | "red") => {
-    if (!football || !meta || isProcessing) return;
-    setIsProcessing(true);
-    try {
-      const field =
-        cardType === "red" ? (team === "A" ? "redCardsA" : "redCardsB") : team === "A" ? "yellowCardsA" : "yellowCardsB";
-      const teamKey = team === "A" ? "teamA" : "teamB";
-      
-      const existingCards = football.cards?.[teamKey] || [];
-      const newCardIndex = existingCards.length;
-      const newCardEntry: FootballCard = { type: cardType, minute: currentMatchMinute(), timestamp: Date.now() };
-      
-      const newEventIndex = football.events ? football.events.length : 0;
-      const newEvent = pushFootballEvent(cardType === "red" ? "red_card" : "yellow_card", teamKey);
-
-      const stateUpdates: Record<string, any> = {
-        [`match/football/${field}`]: increment(1),
-        [`match/football/cards/${teamKey}/${newCardIndex}`]: newCardEntry, // Index-based update
-        [`match/football/events/${newEventIndex}`]: newEvent, // Index-based update
-      };
-      
-      const previousPaths: Record<string, any> = {
-        [`match/football/${field}`]: football[field] || 0,
-        [`match/football/cards/${teamKey}/${newCardIndex}`]: null,
-        [`match/football/events/${newEventIndex}`]: null,
-      };
-
-      if (cardType === "red") {
-        stateUpdates["match/meta/currentEvent"] = "RED CARD";
-        previousPaths["match/meta/currentEvent"] = meta.currentEvent;
+        // রানিং করা হচ্ছে
+        updates = {
+          "match/football/isRunning": true,
+          "match/football/startedAt": now,
+          "match/meta/updatedAt": now,
+        };
       }
 
-      await commitActionAtomic(stateUpdates, `${cardType.toUpperCase()} Card Team ${team}`, previousPaths);
-      if (cardType === "red") clearOverlayEvent("RED CARD");
+      await commitActionAtomic(updates, "Toggle Football Clock", { "match/football": football });
+    } catch (error) {
+      console.error("Failed to toggle timer:", error);
+      showToast("Timer update failed.", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
+  // ২. হাফ পরিবর্তন (1st Half, Half Time, 2nd Half, Full Time)
+  const handleHalfChange = async (halfLabel: string) => {
+    if (!football || isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      const now = Date.now();
+      const isSecondHalf = halfLabel === "2ND HALF";
+      const isHalfTime = halfLabel === "HALF TIME";
+      const isFullTime = halfLabel === "FULL TIME";
+
+      let newElapsed = football.elapsedSeconds || 0;
+      let newIsRunning = football.isRunning;
+      let newStartedAt = football.startedAt;
+
+      if (isSecondHalf && newElapsed < 45 * 60) {
+        newElapsed = 45 * 60; // ৪৫ মিনিটে জাম্প
+      }
+
+      if (isHalfTime || isFullTime) {
+        newIsRunning = false;
+        newStartedAt = null;
+      }
+
+      const updates = {
+        "match/football/half": halfLabel,
+        "match/football/currentHalf": isSecondHalf || isFullTime ? 2 : 1,
+        "match/football/isRunning": newIsRunning,
+        "match/football/startedAt": newStartedAt,
+        "match/football/elapsedSeconds": newElapsed,
+        "match/meta/updatedAt": now,
+      };
+
+      await commitActionAtomic(updates, `Change Half to ${halfLabel}`, { "match/football": football });
+      showToast(`Half changed to ${halfLabel}`, "info");
+    } catch (error) {
+      console.error("Failed to change half:", error);
+      showToast("Failed to change half.", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ৩. আন্তর্জাতিক মানের গোল হ্যান্ডলিং (প্লেয়ার + অ্যাসিস্ট + মিনিট)
+  const recordGoalWithDetails = async (
+    team: "A" | "B",
+    details: {
+      scorerId: string;
+      scorerName: string;
+      assistId?: string;
+      assistName?: string;
+      minute: number;
+    }
+  ) => {
+    if (!football || isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      const now = Date.now();
+      const currentScoreA = football.scoreA || 0;
+      const currentScoreB = football.scoreB || 0;
+
+      const newScoreA = team === "A" ? currentScoreA + 1 : currentScoreA;
+      const newScoreB = team === "B" ? currentScoreB + 1 : currentScoreB;
+
+      const currentHalfKey = football.currentHalf === 2 ? "half2" : "half1";
+      const halfData = football[currentHalfKey] || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
+
+      const updatedHalf = {
+        ...halfData,
+        goalsA: team === "A" ? (halfData.goalsA || 0) + 1 : halfData.goalsA || 0,
+        goalsB: team === "B" ? (halfData.goalsB || 0) + 1 : halfData.goalsB || 0,
+      };
+
+      const newEvent = {
+        id: `ev_${now}_${Math.random().toString(36).substring(2, 6)}`,
+        type: "goal",
+        team: team === "A" ? "teamA" : "teamB",
+        minute: details.minute,
+        scorerId: details.scorerId,
+        scorerName: details.scorerName,
+        assistId: details.assistId || null,
+        assistName: details.assistName || null,
+        timestamp: now,
+      };
+
+      const updatedEvents = [...(football.events || []), newEvent];
+
+      const updates = {
+        [`match/football/score${team}`]: team === "A" ? newScoreA : newScoreB,
+        [`match/football/${currentHalfKey}`]: updatedHalf,
+        "match/football/events": updatedEvents,
+        "match/meta/currentEvent": "GOAL",
+        "match/meta/updatedAt": now,
+      };
+
+      await commitActionAtomic(updates, `Goal for Team ${team} by ${details.scorerName}`, { "match/football": football });
+      showToast(`⚽ GOAL! ${details.scorerName} (${details.minute}')`, "success");
+    } catch (error) {
+      console.error("Error recording goal:", error);
+      showToast("Failed to record goal.", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ৪. আন্তর্জাতিক মানের ডিসিপ্লিনারি কার্ড হ্যান্ডলিং
+  const recordCardWithDetails = async (
+    team: "A" | "B",
+    details: {
+      playerId: string;
+      playerName: string;
+      cardType: "yellow" | "red";
+      minute: number;
+    }
+  ) => {
+    if (!football || isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      const now = Date.now();
+      const isRed = details.cardType === "red";
+
+      const currentRed = team === "A" ? football.redCardsA || 0 : football.redCardsB || 0;
+      const currentYellow = team === "A" ? football.yellowCardsA || 0 : football.yellowCardsB || 0;
+
+      const newEvent = {
+        id: `ev_${now}_${Math.random().toString(36).substring(2, 6)}`,
+        type: isRed ? "red_card" : "yellow_card",
+        team: team === "A" ? "teamA" : "teamB",
+        minute: details.minute,
+        playerId: details.playerId,
+        playerName: details.playerName,
+        timestamp: now,
+      };
+
+      const updatedEvents = [...(football.events || []), newEvent];
+
+      const updates: Record<string, any> = {
+        [`match/football/${isRed ? "redCards" : "yellowCards"}${team}`]: isRed ? currentRed + 1 : currentYellow + 1,
+        "match/football/events": updatedEvents,
+        "match/meta/currentEvent": isRed ? "RED CARD" : "YELLOW CARD",
+        "match/meta/updatedAt": now,
+      };
+
+      await commitActionAtomic(updates, `${isRed ? "Red" : "Yellow"} Card for ${details.playerName}`, { "match/football": football });
+      showToast(`${isRed ? "🟥 Red Card" : "🟨 Yellow Card"} — ${details.playerName}`, isRed ? "error" : "info");
+    } catch (error) {
+      console.error("Error recording card:", error);
+      showToast("Failed to record card.", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ৫. পজেশন অ্যাডজাস্টমেন্ট
   const handlePossessionAdjust = async (team: "A" | "B", delta: number) => {
     if (!football || isProcessing) return;
     setIsProcessing(true);
+
     try {
-      const halfKey = football.currentHalf === 2 ? "half2" : "half1";
-      const current = football[halfKey]?.possession || { teamA: 50, teamB: 50 };
-      let teamA = current.teamA ?? 50;
-      let teamB = current.teamB ?? 50;
-      
-      if (team === "A") {
-        teamA = Math.min(95, Math.max(5, teamA + delta));
-        teamB = 100 - teamA;
-      } else {
-        teamB = Math.min(95, Math.max(5, teamB + delta));
-        teamA = 100 - teamB;
-      }
-      
-      await commitActionAtomic(
-        { [`match/football/${halfKey}/possession`]: { teamA, teamB } },
-        "Adjust Possession",
-        { [`match/football/${halfKey}/possession`]: current }
-      );
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+      const currentHalfKey = football.currentHalf === 2 ? "half2" : "half1";
+      const halfData = football[currentHalfKey] || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
 
-  const handleHalfChange = async (halfName: string) => {
-    if (!football || isProcessing) return;
-    setIsProcessing(true);
-    try {
-      const shouldPause = halfName === "HALF TIME" || halfName === "FULL TIME";
-      const stateUpdates: Record<string, any> = { "match/football/half": halfName };
-      const previousPaths: Record<string, any> = { "match/football/half": football.half };
+      let currentVal = team === "A" ? halfData.possession.teamA : halfData.possession.teamB;
+      let targetVal = Math.min(95, Math.max(5, currentVal + delta));
 
-      // হাফটাইম/ফুলটাইমে টাইমার অটো-পজ হয়ে যায়
-      if (shouldPause && football.isRunning) {
-        const elapsed = (football.elapsedSeconds || 0) + (Date.now() - (football.startedAt || Date.now())) / 1000;
-        stateUpdates["match/football/isRunning"] = false;
-        stateUpdates["match/football/startedAt"] = null;
-        stateUpdates["match/football/elapsedSeconds"] = elapsed;
-        previousPaths["match/football/isRunning"] = true;
-        previousPaths["match/football/startedAt"] = football.startedAt;
-        previousPaths["match/football/elapsedSeconds"] = football.elapsedSeconds || 0;
-      }
-      // দ্বিতীয়ার্ধ শুরু হলে currentHalf পয়েন্টার আপডেট হয়, যাতে গোল/পজেশন half2-তে যোগ হয়
-      if (halfName === "2ND HALF") {
-        stateUpdates["match/football/currentHalf"] = 2;
-        previousPaths["match/football/currentHalf"] = football.currentHalf || 1;
-      }
+      const newPossession = {
+        teamA: team === "A" ? targetVal : 100 - targetVal,
+        teamB: team === "B" ? targetVal : 100 - targetVal,
+      };
 
-      await commitActionAtomic(stateUpdates, `Changed to ${halfName}`, previousPaths);
+      const updates = {
+        [`match/football/${currentHalfKey}/possession`]: newPossession,
+        "match/meta/updatedAt": Date.now(),
+      };
+
+      await commitActionAtomic(updates, "Adjust Possession", { "match/football": football });
+    } catch (error) {
+      console.error("Failed to adjust possession:", error);
     } finally {
       setIsProcessing(false);
     }
   };
 
   return {
-    isProcessing,
     footballClock,
+    isProcessing,
     handleToggleTimer,
-    handleFootballGoal,
-    handleFootballCard,
-    handlePossessionAdjust,
     handleHalfChange,
+    recordGoalWithDetails,
+    recordCardWithDetails,
+    handlePossessionAdjust,
   };
 }

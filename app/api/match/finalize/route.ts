@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminApp, adminFirestore } from "@/lib/firebase/admin";
+import { getAuth } from "firebase-admin/auth";
 import { getDatabase } from "firebase-admin/database";
 import { cookies } from "next/headers";
 
@@ -7,20 +8,40 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    // ১. কুকি থেকে AuthToken যাচাই করা (যেহেতু অ্যাডমিন অলরেডি লগইন করা)
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("AuthToken")?.value;
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
 
-    if (!sessionCookie && !authHeader) {
-      return NextResponse.json({ error: "Unauthorized access" }, { status: 401 });
+    const app = getAdminApp();
+    const authAdmin = getAuth(app);
+    let isAuthorized = false;
+
+    // ১. সেশন কুকি অথবা Bearer Token ক্রিপ্টোগ্রাফিক যাচাই
+    if (sessionCookie) {
+      try {
+        await authAdmin.verifySessionCookie(sessionCookie, true);
+        isAuthorized = true;
+      } catch {
+        isAuthorized = false;
+      }
     }
 
-    // ২. Admin SDK ইনিশিয়ালাইজ করা
-    const app = getAdminApp();
-    const rtdb = getDatabase(app);
+    if (!isAuthorized && authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const idToken = authHeader.substring(7).trim();
+        await authAdmin.verifyIdToken(idToken, true);
+        isAuthorized = true;
+      } catch {
+        isAuthorized = false;
+      }
+    }
 
-    // ৩. RTDB থেকে বর্তমান লাইভ ম্যাচের ডেটা রিড করা
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Unauthorized: Invalid or expired admin session." }, { status: 401 });
+    }
+
+    // ২. RTDB থেকে বর্তমান লাইভ ম্যাচের ডেটা রিড করা
+    const rtdb = getDatabase(app);
     const matchRef = rtdb.ref("match");
     const snapshot = await matchRef.once("value");
 
@@ -30,7 +51,7 @@ export async function POST(request: Request) {
 
     const matchData = snapshot.val();
 
-    // ৪. স্বয়ংক্রিয় রেজাল্ট স্টেটমেন্ট হিসাব করা
+    // ৩. ডাইনামিক রেজাল্ট স্টেটমেন্ট হিসাব (স্কোয়াড সাইজ অনুযায়ী)
     let calculatedResult = "Match Completed";
     if (matchData.meta?.sport === "cricket" && matchData.cricket) {
       const inn1 = matchData.cricket.innings1;
@@ -39,9 +60,15 @@ export async function POST(request: Request) {
       const inn2Team = inn1?.battingTeam === "teamA" ? matchData.meta.teamB : matchData.meta.teamA;
       const target = (inn1?.score || 0) + 1;
 
+      // স্কোয়াড সাইজ থেকে ম্যাক্সিমাম উইকেটের হিসাব
+      const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
+      const squadCount = matchData.cricket.squads?.[chasingSquadKey]?.length || 11;
+      const maxWickets = Math.max(1, squadCount - 1);
+
       if (inn2) {
         if (inn2.score >= target) {
-          calculatedResult = `${inn2Team} won by ${10 - (inn2.wickets || 0)} wickets`;
+          const wicketsLeft = Math.max(0, maxWickets - (inn2.wickets || 0));
+          calculatedResult = `${inn2Team} won by ${wicketsLeft} wicket${wicketsLeft > 1 ? "s" : ""}`;
         } else {
           const runDiff = (inn1?.score || 0) - (inn2.score || 0);
           calculatedResult = runDiff > 0 ? `${inn1Team} won by ${runDiff} runs` : "Match Tied";
@@ -70,10 +97,10 @@ export async function POST(request: Request) {
       },
     };
 
-    // ৫. Firestore-এর 'matches_history' কালেকশনে ম্যাচ পার্মানেন্ট সেভ করা
+    // ৪. Firestore-এ ম্যাচ পার্মানেন্ট সেভ
     const docRef = await adminFirestore.collection("matches_history").add(archiveData);
 
-    // ৬. RTDB-এর /match নোড এবং অ্যাকশন লগ রিসেট করে ফাঁকা করা
+    // ৫. RTDB রিসেট
     await matchRef.set(null);
     await rtdb.ref("match_actionLog").set(null);
 

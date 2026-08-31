@@ -7,6 +7,7 @@ import { Trophy, Radio, ArrowRight, Activity, Calendar, Trash2, Eye, Home } from
 import { useEffect, useState } from "react";
 import { getMatchHistory, deleteMatchAction } from "./actions";
 import { useToast } from "@/lib/context/ToastContext";
+import { auth } from "@/lib/firebase/client";
 
 export default function AdminDashboardHome() {
   const { matchData, loading } = useMatchData();
@@ -32,15 +33,21 @@ export default function AdminDashboardHome() {
     if (!confirm("Are you sure you want to delete this match record? This action cannot be undone.")) return;
 
     setDeletingId(id);
-    const res = await deleteMatchAction(id);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const res = await deleteMatchAction(id, idToken);
 
-    if (res.success) {
-      showToast("Match deleted successfully!", "success");
-      setHistory((prev) => prev.filter((m) => m.id !== id));
-    } else {
+      if (res.success) {
+        showToast("Match deleted successfully!", "success");
+        setHistory((prev) => prev.filter((m) => m.id !== id));
+      } else {
+        showToast(res.error || "Failed to delete match.", "error");
+      }
+    } catch {
       showToast("Failed to delete match.", "error");
+    } finally {
+      setDeletingId(null);
     }
-    setDeletingId(null);
   };
 
   return (
@@ -64,7 +71,7 @@ export default function AdminDashboardHome() {
           href="/admin/setup"
           onClick={(e) => {
             if (isLive) {
-              e.preventDefault(); // অন্য পেজে যাওয়া বন্ধ করবে
+              e.preventDefault();
               showToast("A match is already live! Please finish it before starting a new one.", "error");
             }
           }}
@@ -89,6 +96,7 @@ export default function AdminDashboardHome() {
           </motion.div>
         </Link>
 
+        {/* Card 2: Control Room */}
         <Link href="/admin/control" className={`group block ${!isLive && !loading ? "opacity-75" : ""}`}>
           <motion.div
             whileHover={{ y: -5 }}
@@ -122,6 +130,7 @@ export default function AdminDashboardHome() {
         </Link>
       </div>
 
+      {/* Archived Matches List */}
       <div className="rounded-2xl border border-border bg-panel p-5 shadow-lg sm:p-6">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-xl font-bold text-fg">
