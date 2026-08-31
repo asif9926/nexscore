@@ -16,7 +16,7 @@ export default async function LandingPage() {
       .orderBy("completedAt", "desc")
       .limit(2)
       .get();
-    recentMatches = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    recentMatches = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     console.error("Error fetching recent matches for landing page:", error);
   }
@@ -25,7 +25,6 @@ export default async function LandingPage() {
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-fg selection:bg-electric/30">
       <Navbar />
 
-      {/* Ambient background glow */}
       <div className="pointer-events-none fixed inset-0 z-0 hidden sm:block">
         <div className="absolute left-1/2 top-[-10%] h-96 w-full max-w-7xl -translate-x-1/2 rounded-full bg-electric/10 blur-[100px]" />
         <div className="absolute left-[-10%] top-[20%] h-[50vh] w-[50vw] rounded-full bg-electric/10 blur-[120px] mix-blend-screen" />
@@ -33,11 +32,7 @@ export default async function LandingPage() {
       </div>
 
       <div className="relative z-10 mx-auto w-full max-w-7xl min-w-0 overflow-hidden px-3.5 pb-12 sm:px-6 sm:pb-16 lg:px-8">
-        
-        {/* 1. Hero Section (Compact Padding) */}
         <section className="relative mx-auto flex max-w-4xl flex-col items-center justify-center space-y-4 pt-6 pb-4 text-center sm:space-y-6 sm:pt-12 sm:pb-8 min-w-0 w-full">
-          
-          {/* Animated Status Badge */}
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-panel px-3.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg/80 shadow-sm backdrop-blur-md transition-colors hover:border-electric/50 sm:px-4 sm:py-1.5 sm:text-xs">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-electric opacity-75" />
@@ -46,7 +41,6 @@ export default async function LandingPage() {
             <span>NexScore Engine v1.0</span>
           </div>
 
-          {/* Typography */}
           <div className="space-y-2.5 sm:space-y-4 px-1">
             <h1 className="text-3xl font-black leading-tight tracking-tight text-fg sm:text-5xl md:text-6xl break-words">
               Live Sports Broadcast, <br className="hidden sm:inline" />
@@ -60,7 +54,6 @@ export default async function LandingPage() {
             </p>
           </div>
 
-          {/* CTA Buttons */}
           <div className="flex w-full flex-col items-center justify-center gap-2.5 pt-1 sm:w-auto sm:flex-row sm:gap-3.5 sm:pt-2">
             <Link 
               href="/live" 
@@ -78,12 +71,10 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* 2. Live Match Card (Tight Gap) */}
         <div className="relative z-20 mb-8 sm:mb-12 w-full min-w-0">
           <LiveMatchSection />
         </div>
 
-        {/* 3. Feature Highlights Grid */}
         <section className="space-y-6 pt-1 min-w-0">
           <div className="mx-auto max-w-xl space-y-1.5 text-center px-2">
             <span className="inline-block rounded-full border border-border bg-panel px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest text-electric sm:text-[11px]">
@@ -93,7 +84,6 @@ export default async function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-3.5 sm:gap-5 md:grid-cols-3">
-            {/* Card 1 */}
             <div className="group space-y-3 rounded-2xl border border-border bg-panel p-4.5 transition-all hover:border-electric/30 sm:rounded-3xl sm:p-6">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-electric/40 bg-electric/15 font-bold text-electric shadow-sm sm:h-12 sm:w-12">
                 <FileText className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -106,7 +96,6 @@ export default async function LandingPage() {
               </div>
             </div>
 
-            {/* Card 2 */}
             <div className="group space-y-3 rounded-2xl border border-border bg-panel p-4.5 transition-all hover:border-signal-gold/30 sm:rounded-3xl sm:p-6">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-signal-gold/40 bg-signal-gold/15 font-bold text-signal-gold shadow-sm sm:h-12 sm:w-12">
                 <Activity className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -119,7 +108,6 @@ export default async function LandingPage() {
               </div>
             </div>
 
-            {/* Card 3 */}
             <div className="group space-y-3 rounded-2xl border border-border bg-panel p-4.5 transition-all hover:border-pitch-green/30 sm:rounded-3xl sm:p-6">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-pitch-green/40 bg-pitch-green/15 font-bold text-pitch-green shadow-sm sm:h-12 sm:w-12">
                 <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -134,7 +122,6 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* 4. Recent Matches (Reduced Top Spacing) */}
         <div className="mt-8 sm:mt-12 border-t border-border pt-6 sm:pt-8">
           <RecentMatchesList matches={recentMatches} />
         </div>

@@ -1,7 +1,6 @@
 "use server";
 
-import { getAdminApp, adminFirestore } from "@/lib/firebase/admin";
-import { getAuth } from "firebase-admin/auth";
+import { adminFirestore, adminAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
@@ -14,12 +13,11 @@ export async function getMatchHistory(): Promise<{ success: boolean; matches: an
       return { success: true, matches: [] };
     }
 
-    const matches = snapshot.docs.map((doc) => ({
+    const matches = snapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data(),
     }));
 
-    // ইন-মেমোরি সর্ট
     matches.sort((a: any, b: any) => {
       const timeA = a.completedAt || a.fullSnapshot?.meta?.updatedAt || 0;
       const timeB = b.completedAt || b.fullSnapshot?.meta?.updatedAt || 0;
@@ -47,15 +45,14 @@ export async function deleteMatchAction(id: string, clientToken?: string) {
       return { success: false, error: "Unauthorized access: Session token missing." };
     }
 
-    const authAdmin = getAuth(getAdminApp());
     let isVerified = false;
 
     try {
-      await authAdmin.verifyIdToken(token, true);
+      await adminAuth.verifyIdToken(token, true);
       isVerified = true;
     } catch {
       try {
-        await authAdmin.verifySessionCookie(token, true);
+        await adminAuth.verifySessionCookie(token, true);
         isVerified = true;
       } catch {
         isVerified = false;

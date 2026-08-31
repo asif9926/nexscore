@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminApp } from "@/lib/firebase/admin";
-import { getAuth } from "firebase-admin/auth";
+import { adminAuth } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 
@@ -18,7 +17,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         idToken = body?.idToken || null;
       } catch {
-        // Body parsing fallback
+        // Fallback
       }
     }
 
@@ -26,11 +25,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Token is missing" }, { status: 400 });
     }
 
-    const authAdmin = getAuth(getAdminApp());
-
-    // ১৪ দিনের সর্বোচ্চ মেয়াদ (Firebase Session Cookie Max Limit)
     const expiresIn = 14 * 24 * 60 * 60 * 1000;
-    const sessionCookie = await authAdmin.createSessionCookie(idToken, { expiresIn });
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
 
     const response = NextResponse.json({ success: true });
 

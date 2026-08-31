@@ -1,13 +1,12 @@
-import { initializeApp, getApps, cert, getApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
-import { getDatabase } from "firebase-admin/database";
+import { initializeApp, getApps, cert, getApp, App } from "firebase-admin/app";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
+import { getAuth, Auth } from "firebase-admin/auth";
+import { getDatabase, Database } from "firebase-admin/database";
 
 function getPrivateKey(): string | undefined {
   const key = process.env.FIREBASE_PRIVATE_KEY;
   if (!key) return undefined;
 
-  // অতিরিক্ত কোটেশন মার্ক সরানো ও \n এস্কেপ ঠিক করা
   let cleanKey = key.trim();
   if ((cleanKey.startsWith('"') && cleanKey.endsWith('"')) || (cleanKey.startsWith("'") && cleanKey.endsWith("'"))) {
     cleanKey = cleanKey.substring(1, cleanKey.length - 1);
@@ -15,7 +14,7 @@ function getPrivateKey(): string | undefined {
   return cleanKey.replace(/\\n/g, "\n");
 }
 
-export function getAdminApp() {
+export function getAdminApp(): App {
   if (getApps().length > 0) {
     return getApp();
   }
@@ -40,23 +39,23 @@ export function getAdminApp() {
   });
 }
 
-// Lazy Getter Exports (Serverless-safe)
-export const adminFirestore = new Proxy({} as ReturnType<typeof getFirestore>, {
-  get: (_, prop) => {
+// 🔒 Lazy Typed Proxies (Serverless & TypeScript Safe)
+export const adminFirestore = new Proxy({} as Firestore, {
+  get: (_, prop: string | symbol) => {
     const firestore = getFirestore(getAdminApp());
     return (firestore as any)[prop];
   },
 });
 
-export const adminAuth = new Proxy({} as ReturnType<typeof getAuth>, {
-  get: (_, prop) => {
+export const adminAuth = new Proxy({} as Auth, {
+  get: (_, prop: string | symbol) => {
     const auth = getAuth(getAdminApp());
     return (auth as any)[prop];
   },
 });
 
-export const adminRtdb = new Proxy({} as ReturnType<typeof getDatabase>, {
-  get: (_, prop) => {
+export const adminRtdb = new Proxy({} as Database, {
+  get: (_, prop: string | symbol) => {
     const rtdb = getDatabase(getAdminApp());
     return (rtdb as any)[prop];
   },

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminApp, adminFirestore } from "@/lib/firebase/admin";
-import { getAuth } from "firebase-admin/auth";
-import { getDatabase } from "firebase-admin/database";
+import { adminFirestore, adminAuth, adminRtdb } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
@@ -12,14 +10,11 @@ export async function POST(request: Request) {
     const sessionCookie = cookieStore.get("AuthToken")?.value;
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
 
-    const app = getAdminApp();
-    const authAdmin = getAuth(app);
     let isAuthorized = false;
 
-    // ১. সেশন কুকি অথবা Bearer Token ক্রিপ্টোগ্রাফিক যাচাই
     if (sessionCookie) {
       try {
-        await authAdmin.verifySessionCookie(sessionCookie, true);
+        await adminAuth.verifySessionCookie(sessionCookie, true);
         isAuthorized = true;
       } catch {
         isAuthorized = false;
@@ -29,7 +24,7 @@ export async function POST(request: Request) {
     if (!isAuthorized && authHeader && authHeader.startsWith("Bearer ")) {
       try {
         const idToken = authHeader.substring(7).trim();
-        await authAdmin.verifyIdToken(idToken, true);
+        await adminAuth.verifyIdToken(idToken, true);
         isAuthorized = true;
       } catch {
         isAuthorized = false;
@@ -40,9 +35,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized: Invalid or expired admin session." }, { status: 401 });
     }
 
-    // ২. RTDB থেকে বর্তমান লাইভ ম্যাচের ডেটা রিড করা
-    const rtdb = getDatabase(app);
-    const matchRef = rtdb.ref("match");
+    const matchRef = adminRtdb.ref("match");
     const snapshot = await matchRef.once("value");
 
     if (!snapshot.exists()) {
@@ -51,7 +44,6 @@ export async function POST(request: Request) {
 
     const matchData = snapshot.val();
 
-    // ৩. ডাইনামিক রেজাল্ট স্টেটমেন্ট হিসাব (স্কোয়াড সাইজ অনুযায়ী)
     let calculatedResult = "Match Completed";
     if (matchData.meta?.sport === "cricket" && matchData.cricket) {
       const inn1 = matchData.cricket.innings1;
@@ -60,7 +52,6 @@ export async function POST(request: Request) {
       const inn2Team = inn1?.battingTeam === "teamA" ? matchData.meta.teamB : matchData.meta.teamA;
       const target = (inn1?.score || 0) + 1;
 
-      // স্কোয়াড সাইজ থেকে ম্যাক্সিমাম উইকেটের হিসাব
       const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
       const squadCount = matchData.cricket.squads?.[chasingSquadKey]?.length || 11;
       const maxWickets = Math.max(1, squadCount - 1);
@@ -97,12 +88,10 @@ export async function POST(request: Request) {
       },
     };
 
-    // ৪. Firestore-এ ম্যাচ পার্মানেন্ট সেভ
     const docRef = await adminFirestore.collection("matches_history").add(archiveData);
 
-    // ৫. RTDB রিসেট
     await matchRef.set(null);
-    await rtdb.ref("match_actionLog").set(null);
+    await adminRtdb.ref("match_actionLog").set(null);
 
     return NextResponse.json({
       success: true,

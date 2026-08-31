@@ -10,7 +10,7 @@ export default async function MatchHistoryPage() {
   try {
     const snapshot = await adminFirestore.collection("matches_history").orderBy("completedAt", "desc").get();
 
-    matches = snapshot.docs.map((doc) => ({
+    matches = snapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data(),
     }));
