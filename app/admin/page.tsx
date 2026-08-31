@@ -3,9 +3,20 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useMatchData } from "@/lib/context/MatchDataContext";
-import { Trophy, Radio, ArrowRight, Activity, Calendar, Trash2, Eye, Home, AlertTriangle, RefreshCw } from "lucide-react";
+import { 
+  Trophy, 
+  Radio, 
+  ArrowRight, 
+  Activity, 
+  Calendar, 
+  Trash2, 
+  Eye, 
+  Home, 
+  AlertTriangle, 
+  RefreshCw 
+} from "lucide-react";
 import { useEffect, useState } from "react";
-import { getMatchHistory, deleteMatchAction } from "./actions";
+import { deleteMatchAction } from "./actions";
 import { useToast } from "@/lib/context/ToastContext";
 import { auth } from "@/lib/firebase/client";
 
@@ -26,13 +37,24 @@ export default function AdminDashboardHome() {
   const loadHistory = async () => {
     setFetching(true);
     setFetchError(null);
-    const res = await getMatchHistory();
-    if (res.success) {
-      setHistory(res.matches);
-    } else {
-      setFetchError(res.error || "Failed to load archived matches from Firestore.");
+    try {
+      // 🔒 সঠিক পাথ: /api/match/history
+      const res = await fetch("/api/match/history", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHistory(data.matches || []);
+      } else {
+        setFetchError(data.error || "Failed to load archived matches.");
+      }
+    } catch (err: any) {
+      console.error("Fetch error:", err);
+      setFetchError(err?.message || "Network error while loading matches.");
+    } finally {
+      // লোডিং স্টেট কখনোই আটকে থাকবে না
+      setFetching(false);
     }
-    setFetching(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -72,6 +94,7 @@ export default function AdminDashboardHome() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Card 1: Start New Match */}
         <Link 
           href="/admin/setup"
           onClick={(e) => {
@@ -101,6 +124,7 @@ export default function AdminDashboardHome() {
           </motion.div>
         </Link>
 
+        {/* Card 2: Control Room */}
         <Link href="/admin/control" className={`group block ${!isLive && !loading ? "opacity-75" : ""}`}>
           <motion.div
             whileHover={{ y: -5 }}
@@ -134,7 +158,7 @@ export default function AdminDashboardHome() {
         </Link>
       </div>
 
-      {/* Archived Matches */}
+      {/* Archived Matches Section */}
       <div className="rounded-2xl border border-border bg-panel p-5 shadow-lg sm:p-6">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-xl font-bold text-fg">
