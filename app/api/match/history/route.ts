@@ -16,7 +16,6 @@ export async function GET() {
       ...doc.data(),
     }));
 
-    // তারিখ অনুযায়ী ডিসেন্ডিং সর্ট
     matches.sort((a: any, b: any) => {
       const timeA = a.completedAt || a.fullSnapshot?.meta?.updatedAt || 0;
       const timeB = b.completedAt || b.fullSnapshot?.meta?.updatedAt || 0;
@@ -25,7 +24,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, matches });
   } catch (error: any) {
-    console.error("Firestore API Error:", error);
+    console.error("Firestore getMatchHistory Error:", error);
     return NextResponse.json(
       {
         success: false,

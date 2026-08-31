@@ -38,10 +38,15 @@ export default function AdminDashboardHome() {
     setFetching(true);
     setFetchError(null);
     try {
-      // 🔒 সঠিক পাথ: /api/match/history
       const res = await fetch("/api/match/history", {
         cache: "no-store",
       });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Server Error (${res.status}): ${errorText.substring(0, 100)}`);
+      }
+
       const data = await res.json();
       if (data.success) {
         setHistory(data.matches || []);
@@ -52,7 +57,6 @@ export default function AdminDashboardHome() {
       console.error("Fetch error:", err);
       setFetchError(err?.message || "Network error while loading matches.");
     } finally {
-      // লোডিং স্টেট কখনোই আটকে থাকবে না
       setFetching(false);
     }
   };

@@ -39,7 +39,7 @@ export function getAdminApp(): App {
   });
 }
 
-// 🔒 Lazy Typed Proxies (Serverless & TypeScript Safe)
+// 🔒 আইসোলেটেড লেজি প্রক্সি (যাতে একটির কারণে অন্য সার্ভিস ক্র্যাশ না করে)
 export const adminFirestore = new Proxy({} as Firestore, {
   get: (_, prop: string | symbol) => {
     const firestore = getFirestore(getAdminApp());
