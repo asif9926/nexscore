@@ -36,16 +36,21 @@ export default function AdminHeaderActions() {
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch("/api/logout");
-      await signOut(auth);
-      // লগআউট হলে ডার্ক মোডে ফিরে যাবে
-      document.documentElement.classList.remove("sunlight");
-      router.push("/admin/login");
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  };
+  try {
+    // ১. Firebase ক্লায়েন্ট সাইন-আউট
+    await signOut(auth);
+
+    // ২. সার্ভার সাইড সেশন কুকি ডিলিট
+    await fetch("/api/logout", {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
+  } finally {
+    // ৩. হার্ড রিফ্রেশ সহ ব্রাউজারকে ফ্রেশ লগইন পেজে পাঠানো (Next.js Cache Clear)
+    window.location.href = "/admin/login";
+  }
+};
 
   return (
     <div className="flex items-center gap-2 sm:gap-3">
