@@ -512,7 +512,7 @@ export default function ControlDashboard() {
                       disabled={isProcessing || currentInnings?.isCompleted}
                       className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-electric/40 bg-electric/15 text-sm font-bold text-electric transition-all active:scale-95 disabled:opacity-50"
                     >
-                      <span>EXTRAS</span>
+                      <span>EXTRAS (WD,NB)</span>
                       {enableHotkeys && <kbd className="hidden rounded bg-electric/20 px-1.5 py-0.5 text-[10px] font-mono sm:inline">[E]</kbd>}
                     </button>
                   </div>
