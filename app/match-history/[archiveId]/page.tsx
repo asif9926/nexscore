@@ -1,3 +1,4 @@
+// app/match-history/[archiveId]/page.tsx
 import { notFound } from "next/navigation";
 import { adminFirestore } from "@/lib/firebase/admin";
 import LiveMatchCenter from "@/components/public-view/LiveMatchCenter";
@@ -17,7 +18,19 @@ export default async function MatchDetailPage({ params }: Props) {
   if (!doc.exists) notFound();
 
   const match = doc.data()!;
-  const matchData = match.fullSnapshot;
+
+  // 🛡️ FIX: fullSnapshot-এর সাথে Firestore root finalResult মার্জ করা
+  const matchData = {
+    ...match.fullSnapshot,
+    meta: {
+      ...match.fullSnapshot?.meta,
+      finalResult: match.finalResult || match.fullSnapshot?.meta?.finalResult || "Match Completed",
+      tournament: match.tournament || match.meta?.tournament || match.fullSnapshot?.meta?.tournament,
+      venue: match.venue || match.meta?.venue || match.fullSnapshot?.meta?.venue,
+      completedAt: match.completedAt || match.fullSnapshot?.meta?.updatedAt,
+      status: "completed",
+    },
+  };
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-fg selection:bg-electric/30">
@@ -29,9 +42,7 @@ export default async function MatchDetailPage({ params }: Props) {
       </div>
 
       <div className="relative z-10 mx-auto mt-2 sm:mt-4 w-full max-w-5xl min-w-0 overflow-hidden px-3.5 pb-20 sm:px-6 md:p-6">
-        {/* Share Graphic & (i) Instruction Actions Bar */}
         <MatchShareActions archiveId={archiveId} />
-
         {matchData && <LiveMatchCenter matchData={matchData} />}
       </div>
       <Footer />

@@ -46,21 +46,27 @@ export default function MatchResultCard({ match }: Props) {
       const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
       const squadCount = cricketSnap.squads?.[chasingSquadKey]?.length || 11;
       const maxWickets = Math.max(1, squadCount - 1);
+      const maxOvers = cricketSnap.maxOvers || 20;
 
       if (inn2) {
         if (inn2.score >= targetScore) {
           const wkts = Math.max(0, maxWickets - (inn2.wickets || 0));
           return `${inn2Team} won by ${wkts} wicket${wkts > 1 ? "s" : ""}`;
         }
-        const diff = (inn1?.score || 0) - inn2.score;
-        if (diff > 0) {
-          return `${inn1Team} won by ${diff} run${diff > 1 ? "s" : ""}`;
+
+        // 🛡️ FIX: ২য় ইনিংস আনুষ্ঠানিকভাবে শেষ হয়েছে কি না চেক করা
+        const [o] = (inn2.overs || "0.0").split(".").map(Number);
+        const isInn2Finished = inn2.isCompleted || o >= maxOvers || (inn2.wickets || 0) >= maxWickets;
+
+        if (isInn2Finished) {
+          const diff = (inn1?.score || 0) - inn2.score;
+          if (diff > 0) return `${inn1Team} won by ${diff} run${diff > 1 ? "s" : ""}`;
+          if (diff === 0) return "Match Tied (Super Over)";
         }
-        if (diff === 0) {
-          return "Match Tied (Super Over)";
-        }
+
+        return `${inn2Team} need ${Math.max(0, targetScore - inn2.score)} runs`;
       }
-      return "Match Completed";
+      return "1st Innings Completed";
     }
 
     if (!isCricket && footballSnap) {

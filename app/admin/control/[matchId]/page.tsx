@@ -1,13 +1,16 @@
-// app/admin/control/page.tsx
+// app/admin/control/[matchId]/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 import { useCricketScoring } from "@/lib/hooks/useCricketScoring";
 import { useFootballScoring } from "@/lib/hooks/useFootballScoring";
 import { undoLastAction } from "@/lib/firebase/actions";
-import { auth } from "@/lib/firebase/client";
+import { auth, rtdb } from "@/lib/firebase/client";
+import { ref, update } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
 import { useToast } from "@/lib/context/ToastContext";
 import { 
   RotateCcw, 
@@ -21,27 +24,39 @@ import {
   Tv2,
   ArrowLeftRight,
   UserPlus,
-  Keyboard
+  Keyboard,
+  ShieldAlert,
+  CloudRain
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+
 import WicketModal from "@/components/admin/WicketModal";
 import ExtrasModal from "@/components/admin/ExtrasModal";
 import NewBowlerModal from "@/components/admin/NewBowlerModal";
 import InningsBreakModal from "@/components/admin/InningsBreakModal";
 import FootballGoalModal from "@/components/admin/FootballGoalModal";
 import FootballCardModal from "@/components/admin/FootballCardModal";
+import ReviseTargetModal from "@/components/admin/ReviseTargetModal";
 import BroadcastControls from "@/components/admin/BroadcastControls";
 import OverlayLinksCard from "@/components/admin/OverlayLinksCard";
 import RecentBallsTimeline from "@/components/public-view/RecentBallsTimeline";
 
-export default function ControlDashboard() {
-  const { matchData, loading } = useMatchData();
+export default function DynamicControlDashboard() {
+  const params = useParams();
+  const matchId = params?.matchId as string;
   const router = useRouter();
   const { showToast } = useToast();
+
+  const [currentAdmin, setCurrentAdmin] = useState<any>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  const { matchData, loading } = useMatchData(matchId);
 
   const [activeTab, setActiveTab] = useState<"scoring" | "broadcast">("scoring");
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [enableHotkeys, setEnableHotkeys] = useState(false);
+
+  // 🌧️ DLS / Rain Rule Modal State
+  const [isReviseTargetModalOpen, setIsReviseTargetModalOpen] = useState(false);
 
   // Football Modals State
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -92,6 +107,19 @@ export default function ControlDashboard() {
   const isCricketSport = matchData?.meta?.sport === "cricket";
   const isProcessing = isCricketSport ? cricketScoring.isProcessing : footballScoring.isProcessing;
 
+  // 🛡️ অ্যাডমিন অথেন্টিকেশন গার্ড
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push("/admin/login");
+      } else {
+        setCurrentAdmin(user);
+      }
+      setAuthChecking(false);
+    });
+    return () => unsub();
+  }, [router]);
+
   // 🛡️ গ্লোবাল কীবোর্ড হটকি লিসেনার
   useEffect(() => {
     if (!enableHotkeys) return;
@@ -101,19 +129,19 @@ export default function ControlDashboard() {
       isExtrasModalOpen ||
       isNewBowlerModalOpen ||
       isInningsBreakModalOpen ||
+      isReviseTargetModalOpen ||
       isGoalModalOpen ||
       isCardModalOpen;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const targetTag = (e.target as HTMLElement).tagName;
       if (["INPUT", "SELECT", "TEXTAREA"].includes(targetTag)) return;
-
       if (isProcessing) return;
 
       // Undo shortcut (Ctrl + Z / Cmd + Z)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        undoLastAction();
+        undoLastAction(matchId);
         return;
       }
 
@@ -122,6 +150,7 @@ export default function ControlDashboard() {
         if (isWicketModalOpen) setIsWicketModalOpen(false);
         if (isExtrasModalOpen) setIsExtrasModalOpen(false);
         if (isNewBowlerModalOpen) setIsNewBowlerModalOpen(false);
+        if (isReviseTargetModalOpen) setIsReviseTargetModalOpen(false);
         if (isGoalModalOpen) setIsGoalModalOpen(false);
         if (isCardModalOpen) setIsCardModalOpen(false);
         return;
@@ -144,11 +173,9 @@ export default function ControlDashboard() {
       }
 
       // Football Timer Toggle Shortcut (Spacebar)
-      if (matchData?.meta?.sport === "football") {
-        if (e.code === "Space") {
-          e.preventDefault();
-          handleToggleTimer();
-        }
+      if (matchData?.meta?.sport === "football" && e.code === "Space") {
+        e.preventDefault();
+        handleToggleTimer();
       }
     };
 
@@ -157,12 +184,14 @@ export default function ControlDashboard() {
   }, [
     enableHotkeys,
     isProcessing,
+    matchId,
     matchData?.meta?.sport,
     currentInnings?.isCompleted,
     isWicketModalOpen,
     isExtrasModalOpen,
     isNewBowlerModalOpen,
     isInningsBreakModalOpen,
+    isReviseTargetModalOpen,
     isGoalModalOpen,
     isCardModalOpen,
     handleRuns,
@@ -170,19 +199,73 @@ export default function ControlDashboard() {
     setIsWicketModalOpen,
     setIsExtrasModalOpen,
     setIsNewBowlerModalOpen,
+    setIsReviseTargetModalOpen,
   ]);
 
-  if (loading)
-    return <div className="mt-20 animate-pulse text-center text-fg-muted">Loading Live Dashboard...</div>;
+  if (loading || authChecking) {
+    return <div className="mt-20 animate-pulse text-center text-fg-muted">Loading Match Control Room...</div>;
+  }
 
-  if (!matchData || !matchData.meta)
+  if (!matchData || !matchData.meta) {
     return (
       <div className="mt-20 rounded-2xl border border-border bg-panel p-8 text-center text-crimson">
-        No active match found. Please start a new match from the Dashboard.
+        Active match not found or already archived.
       </div>
     );
+  }
+
+  // 🛡️ পারমিশন গার্ড: অন্য অ্যাডমিনের ম্যাচ কন্ট্রোল বন্ধ করা
+  const creatorUid = (matchData.meta as any)?.createdBy;
+  if (creatorUid && currentAdmin && creatorUid !== currentAdmin.uid) {
+    return (
+      <div className="mt-20 space-y-4 rounded-3xl border border-crimson/30 bg-panel p-8 text-center">
+        <ShieldAlert size={40} className="mx-auto text-crimson" />
+        <h2 className="text-xl font-bold text-fg">Access Denied</h2>
+        <p className="text-xs text-fg-muted">
+          আপনি শুধুমাত্র আপনার নিজের তৈরি করা ম্যাচ কন্ট্রোল করতে পারবেন।
+        </p>
+        <button
+          onClick={() => router.push("/admin")}
+          className="rounded-xl bg-electric px-4 py-2 text-xs font-bold text-white"
+        >
+          Back to Your Dashboard
+        </button>
+      </div>
+    );
+  }
 
   const { meta, cricket, football } = matchData;
+
+  // 🌧️ DLS / Rain Rule Handler (1st & 2nd Innings Smart Update)
+  const handleReviseTargetConfirm = async ({
+    revisedTarget,
+    revisedMaxOvers,
+  }: {
+    revisedTarget?: number;
+    revisedMaxOvers: number;
+  }) => {
+    try {
+      const updates: Record<string, any> = {
+        [`matches/${matchId}/cricket/maxOvers`]: revisedMaxOvers,
+        [`matches/${matchId}/meta/updatedAt`]: Date.now(),
+      };
+
+      if (cricket?.currentInnings === 2 && typeof revisedTarget === "number") {
+        updates[`matches/${matchId}/cricket/innings2/target`] = revisedTarget;
+      }
+
+      await update(ref(rtdb), updates);
+      showToast(
+        cricket?.currentInnings === 2
+          ? "Rain Rule applied! Target & Overs revised successfully."
+          : "Match Overs revised successfully for 1st Innings.",
+        "success"
+      );
+    } catch (err) {
+      console.error("Error updating match overs/target:", err);
+      showToast("Failed to update overs/target.", "error");
+    }
+  };
 
   const handleFinalizeMatch = async () => {
     if (!confirm("Are you sure you want to end this match and archive it?")) return;
@@ -197,12 +280,16 @@ export default function ControlDashboard() {
 
       const res = await fetch("/api/match/finalize", {
         method: "POST",
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ matchId }),
       });
       const data = await res.json();
       if (data.success) {
         showToast("Match archived successfully!", "success");
-        router.push("/admin/setup");
+        router.push("/admin");
       } else {
         showToast(data.error || "Failed to finalize match.", "error");
       }
@@ -258,14 +345,14 @@ export default function ControlDashboard() {
           />
           <ExtrasModal isOpen={isExtrasModalOpen} onClose={() => setIsExtrasModalOpen(false)} onConfirm={confirmExtras} />
           <NewBowlerModal
-  isOpen={isNewBowlerModalOpen}
-  onClose={() => setIsNewBowlerModalOpen(false)}
-  onConfirm={confirmNewBowler}
-  onUndo={undoLastAction}
-  bowlingSquad={bowlingSquad}
-  activeBowlerId={activeBowlerObj?.id}
-  isMandatory={false} // হার্ড ব্লকিং বন্ধ রাখা হলো
-/>
+            isOpen={isNewBowlerModalOpen}
+            onClose={() => setIsNewBowlerModalOpen(false)}
+            onConfirm={confirmNewBowler}
+            onUndo={() => undoLastAction(matchId)}
+            bowlingSquad={bowlingSquad}
+            activeBowlerId={activeBowlerObj?.id}
+            isMandatory={false}
+          />
           <InningsBreakModal
             isOpen={isInningsBreakModalOpen}
             targetScore={(currentInnings?.score || 0) + 1}
@@ -274,6 +361,19 @@ export default function ControlDashboard() {
             chasingSquad={bowlingSquad}
             defendingSquad={battingSquad}
             onStartSecondInnings={startSecondInnings}
+          />
+
+          {/* 🌧️ Dynamic Rain Rule / Overs Revision Modal */}
+          <ReviseTargetModal
+            isOpen={isReviseTargetModalOpen}
+            onClose={() => setIsReviseTargetModalOpen(false)}
+            onConfirm={handleReviseTargetConfirm}
+            currentInningsNumber={(cricket?.currentInnings as 1 | 2) || 1}
+            currentTarget={currentInnings?.target || (cricket?.innings1?.score ? cricket.innings1.score + 1 : 0)}
+            currentMaxOvers={cricket?.maxOvers || 20}
+            currentScore={currentInnings?.score || 0}
+            currentOvers={currentInnings?.overs || "0.0"}
+            battingTeam={battingTeamName || "Batting Team"}
           />
         </>
       )}
@@ -322,7 +422,7 @@ export default function ControlDashboard() {
             )}
           </div>
 
-          <div className="flex items-baseline gap-3 shrink-0 text-right">
+          <div className="flex shrink-0 items-baseline gap-3 text-right">
             {meta.sport === "cricket" ? (
               <div className="flex items-center gap-3">
                 <div className="font-score text-3xl font-black text-fg sm:text-5xl">
@@ -330,14 +430,26 @@ export default function ControlDashboard() {
                   <span className="mx-0.5 text-xl text-fg-faint">/</span>
                   {currentInnings?.wickets || 0}
                 </div>
-                <div className="text-left border-l border-border pl-2.5 text-xs">
-                  <div className="font-bold text-fg">
-                    {currentInnings?.overs || "0.0"}{" "}
-                    <span className="text-[10px] text-fg-faint font-normal">/ {cricket?.maxOvers} ov</span>
+                <div className="border-l border-border pl-2.5 text-left text-xs">
+                  <div className="flex items-center gap-1 font-bold text-fg">
+                    <span>
+                      {currentInnings?.overs || "0.0"}{" "}
+                      <span className="text-[10px] font-normal text-fg-faint">/ {cricket?.maxOvers} ov</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsReviseTargetModalOpen(true)}
+                      title="Revise match overs / target (Rain Delay)"
+                      className="rounded p-0.5 text-fg-muted transition-colors hover:text-signal-gold"
+                    >
+                      <CloudRain size={12} />
+                    </button>
                   </div>
                   <div className="text-[10px] font-semibold text-fg-muted">CRR {currentRunRate}</div>
                   {cricket?.currentInnings === 2 && currentInnings?.target && (
-                    <div className="text-[10px] font-bold text-signal-gold">Target: {currentInnings.target}</div>
+                    <div className="text-[10px] font-bold text-signal-gold">
+                      Target: {currentInnings.target}
+                    </div>
                   )}
                 </div>
               </div>
@@ -369,8 +481,8 @@ export default function ControlDashboard() {
         {/* Striker / Non-Striker Row */}
         {meta.sport === "cricket" && (strikerBatsman || nonStrikerBatsman) && (
           <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border bg-ink/60 p-2 text-xs">
-            <div className="truncate flex-1">
-              <span className="text-electric font-black">▶</span>{" "}
+            <div className="flex-1 truncate">
+              <span className="font-black text-electric">▶</span>{" "}
               <span className="font-bold text-fg">{strikerBatsman?.name || "—"}</span>
               <span className="ml-1 text-fg-muted">{strikerBatsman ? `${strikerBatsman.runs}*(${strikerBatsman.balls})` : ""}</span>
             </div>
@@ -385,7 +497,7 @@ export default function ControlDashboard() {
               <span>Swap</span>
             </button>
 
-            <div className="truncate flex-1 text-right">
+            <div className="flex-1 truncate text-right">
               <span className="font-medium text-fg">{nonStrikerBatsman?.name || "—"}</span>
               <span className="ml-1 text-fg-muted">{nonStrikerBatsman ? `${nonStrikerBatsman.runs}(${nonStrikerBatsman.balls})` : ""}</span>
             </div>
@@ -393,7 +505,7 @@ export default function ControlDashboard() {
         )}
 
         {meta.sport === "cricket" && currentInnings?.recentBalls && currentInnings.recentBalls.length > 0 && (
-          <div className="border-t border-border/60 pt-2.5 mt-2.5">
+          <div className="mt-2.5 border-t border-border/60 pt-2.5">
             <RecentBallsTimeline
               balls={currentInnings.recentBalls}
               overs={currentInnings.overs || "0.0"}
@@ -402,14 +514,14 @@ export default function ControlDashboard() {
         )}
       </div>
 
-      {/* ================= COMPACT SEGMENTED TAB SWITCHER WITH EMBEDDED HOTKEY PILL ================= */}
+      {/* ================= COMPACT TAB SWITCHER ================= */}
       <div className="flex items-center gap-1.5 rounded-2xl border border-border bg-panel p-1.5 shadow-sm">
         <button
           onClick={() => setActiveTab("scoring")}
-          className={`flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+          className={`flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all sm:text-sm ${
             activeTab === "scoring"
               ? "bg-electric text-white shadow-md shadow-electric/25"
-              : "text-fg-muted hover:text-fg hover:bg-panel-raised"
+              : "text-fg-muted hover:bg-panel-raised hover:text-fg"
           }`}
         >
           <Gamepad2 size={15} />
@@ -418,20 +530,16 @@ export default function ControlDashboard() {
 
         <button
           onClick={() => setActiveTab("broadcast")}
-          className={`flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+          className={`flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all sm:text-sm ${
             activeTab === "broadcast"
               ? "bg-signal-gold text-ink shadow-md shadow-signal-gold/25"
-              : "text-fg-muted hover:text-fg hover:bg-panel-raised"
+              : "text-fg-muted hover:bg-panel-raised hover:text-fg"
           }`}
         >
           <Tv2 size={15} />
-          <span>Broadcast &amp; OBS</span>
-          <span className="rounded bg-ink px-1.5 py-0.5 text-[9px] font-black uppercase text-signal-gold">
-            PCR
-          </span>
+          <span>Broadcast &amp; OBS (PCR)</span>
         </button>
 
-        {/* ⌨️ Ultra-Compact Hotkey Toggle Button */}
         {meta.sport === "cricket" && (
           <button
             type="button"
@@ -470,13 +578,28 @@ export default function ControlDashboard() {
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={undoLastAction}
-                  disabled={isProcessing}
-                  className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-border bg-ink px-3 py-1.5 text-xs font-semibold text-fg-muted hover:bg-panel-raised disabled:opacity-50"
-                >
-                  <RotateCcw size={14} /> Undo <kbd className="hidden font-mono text-[9px] text-fg-faint sm:inline">[Ctrl+Z]</kbd>
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {/* 🌧️ Rain Rule Button (Visible in Both Innings for Cricket) */}
+                  {meta.sport === "cricket" && (
+                    <button
+                      type="button"
+                      onClick={() => setIsReviseTargetModalOpen(true)}
+                      className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-signal-gold/40 bg-signal-gold/10 px-3 py-1.5 text-xs font-bold text-signal-gold transition-colors hover:bg-signal-gold/20"
+                    >
+                      <CloudRain size={13} />
+                      <span>{cricket?.currentInnings === 2 ? "DLS / Revise Target" : "Revise Overs (Rain)"}</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => undoLastAction(matchId)}
+                    disabled={isProcessing}
+                    className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-border bg-ink px-3 py-1.5 text-xs font-semibold text-fg-muted hover:bg-panel-raised disabled:opacity-50"
+                  >
+                    <RotateCcw size={14} /> Undo <kbd className="hidden font-mono text-[9px] text-fg-faint sm:inline">[Ctrl+Z]</kbd>
+                  </button>
+                </div>
               </div>
 
               {meta.sport === "cricket" ? (
@@ -487,7 +610,7 @@ export default function ControlDashboard() {
                         key={run}
                         onClick={() => handleRuns(run)}
                         disabled={isProcessing || currentInnings?.isCompleted}
-                        className="relative min-h-[52px] rounded-xl border border-border bg-ink font-score text-2xl text-fg transition-all active:scale-90 active:bg-electric/20 disabled:opacity-50 hover:border-electric/40"
+                        className="relative min-h-[52px] rounded-xl border border-border bg-ink font-score text-2xl text-fg transition-all hover:border-electric/40 active:scale-90 active:bg-electric/20 disabled:opacity-50"
                       >
                         {run}
                         {enableHotkeys && (
@@ -505,7 +628,7 @@ export default function ControlDashboard() {
                       className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-crimson/40 bg-crimson/15 text-sm font-bold text-crimson transition-all active:scale-95 disabled:opacity-50"
                     >
                       <span>WICKET (OUT)</span>
-                      {enableHotkeys && <kbd className="hidden rounded bg-crimson/20 px-1.5 py-0.5 text-[10px] font-mono sm:inline">[W]</kbd>}
+                      {enableHotkeys && <kbd className="hidden rounded bg-crimson/20 px-1.5 py-0.5 font-mono text-[10px] sm:inline">[W]</kbd>}
                     </button>
                     <button
                       onClick={() => setIsExtrasModalOpen(true)}
@@ -513,12 +636,13 @@ export default function ControlDashboard() {
                       className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-electric/40 bg-electric/15 text-sm font-bold text-electric transition-all active:scale-95 disabled:opacity-50"
                     >
                       <span>EXTRAS (WD,NB)</span>
-                      {enableHotkeys && <kbd className="hidden rounded bg-electric/20 px-1.5 py-0.5 text-[10px] font-mono sm:inline">[E]</kbd>}
+                      {enableHotkeys && <kbd className="hidden rounded bg-electric/20 px-1.5 py-0.5 font-mono text-[10px] sm:inline">[E]</kbd>}
                     </button>
                   </div>
                 </>
               ) : (
                 <div className="space-y-4">
+                  {/* Half Switcher */}
                   <div className="flex flex-wrap justify-center gap-2 rounded-xl border border-border bg-ink p-2">
                     {["1ST HALF", "HALF TIME", "2ND HALF", "FULL TIME"].map((half) => (
                       <button
@@ -535,6 +659,7 @@ export default function ControlDashboard() {
                     ))}
                   </div>
 
+                  {/* Team Scoring Cards (Goal, Yellow, Red) */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2.5 rounded-xl border border-border bg-ink/40 p-3.5">
                       <div className="text-center text-xs font-bold uppercase tracking-wider text-electric">{meta.teamA}</div>
@@ -594,7 +719,7 @@ export default function ControlDashboard() {
               )}
             </div>
 
-            {/* Active Bowler Card */}
+            {/* Active Bowler Card / Football Possession Bar */}
             {meta.sport === "cricket" ? (
               <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
                 <div className="mb-2 flex items-center justify-between">
@@ -670,7 +795,7 @@ export default function ControlDashboard() {
               )
             )}
 
-            {/* END MATCH BUTTON */}
+            {/* End Match Button */}
             <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg">
               <button
                 onClick={handleFinalizeMatch}
@@ -683,7 +808,7 @@ export default function ControlDashboard() {
           </motion.div>
         )}
 
-        {/* TAB 2: BROADCAST & OBS */}
+        {/* Broadcast & OBS Tab */}
         {activeTab === "broadcast" && (
           <motion.div
             key="tab-broadcast"
@@ -694,6 +819,7 @@ export default function ControlDashboard() {
             className="space-y-4"
           >
             <BroadcastControls
+              matchId={matchId}
               sport={meta.sport}
               showScoreboard={meta.showScoreboard !== false}
               showLogo={meta.showLogo !== false}
@@ -703,7 +829,7 @@ export default function ControlDashboard() {
               customLogoLeftUrl={(meta as any).customLogoLeftUrl}
             />
 
-            <OverlayLinksCard sport={meta.sport} theme={meta.activeTheme} />
+            <OverlayLinksCard matchId={matchId} sport={meta.sport} theme={meta.activeTheme} />
           </motion.div>
         )}
       </AnimatePresence>

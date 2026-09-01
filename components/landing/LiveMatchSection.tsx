@@ -1,10 +1,12 @@
+// components/landing/LiveMatchSection.tsx
 "use client";
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { useMatchData } from "@/lib/hooks/useMatchData";
+import { useAllLiveMatches } from "@/lib/hooks/useMatchData";
 import { useFootballClock } from "@/lib/hooks/useFootballClock";
-import { Trophy, Radio, History, Tv, ExternalLink, Globe } from "lucide-react";
+import { Trophy, Radio, History, Tv, ExternalLink, ArrowRight } from "lucide-react";
+import type { MatchData } from "@/lib/types/match";
 
 const calculateCRR = (score: number, oversStr: string | number) => {
   if (!oversStr) return "0.00";
@@ -14,146 +16,201 @@ const calculateCRR = (score: number, oversStr: string | number) => {
   return ((score / totalBalls) * 6).toFixed(2);
 };
 
-export default function LiveMatchSection() {
-  const { matchData, loading } = useMatchData();
-  const footballClock = useFootballClock(matchData?.football);
+// 🔹 প্রতিটি সিঙ্গেল লাইভ ম্যাচ কার্ড কম্পোনেন্ট
+function LiveMatchCard({ id, data, isSingle }: { id: string; data: MatchData; isSingle: boolean }) {
+  const { meta, cricket, football } = data;
+  const footballClock = useFootballClock(football);
 
-  const isLive = matchData?.meta?.status === "live";
-  const { meta, cricket, football } = matchData || {};
-
+  const isCricket = meta?.sport === "cricket";
   const currentInningsKey = cricket?.currentInnings === 2 ? "innings2" : "innings1";
-  const currentInnings = cricket?.[currentInningsKey];
+  const currentInnings = cricket ? cricket[currentInningsKey] : null;
   const battingTeamName = currentInnings?.battingTeam === "teamA" ? meta?.teamA : meta?.teamB;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-border bg-panel p-5 shadow-2xl transition-all hover:border-electric/50 hover:shadow-electric/10 ${
+        isSingle ? "sm:p-7" : "sm:p-6"
+      }`}
+    >
+      {/* Dynamic Top Glow */}
+      <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-electric via-pitch-green to-signal-gold" />
+      <div className="pointer-events-none absolute right-0 top-0 h-40 w-40 rounded-full bg-electric/10 blur-3xl" />
+
+      <div className="relative z-10 space-y-4">
+        {/* Top Status Row */}
+        <div className="flex items-center justify-between border-b border-border/80 pb-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-crimson opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-crimson" />
+            </span>
+            <span className="font-bold uppercase tracking-wider text-crimson text-[11px]">
+              ON AIR • {meta?.sport}
+            </span>
+            <span className="text-fg-faint">•</span>
+            <span className="truncate max-w-[140px] font-medium text-fg-muted text-[11px] sm:max-w-[200px]">
+              {meta?.tournament || "Local Tournament"}
+            </span>
+          </div>
+
+          {isCricket && currentInnings ? (
+            <div className="flex items-center gap-1.5">
+              <span className="rounded-full border border-electric/20 bg-electric/10 px-2 py-0.5 font-mono text-[10px] font-bold text-electric">
+                CRR: <span className="text-fg">{calculateCRR(currentInnings.score || 0, currentInnings.overs || "0.0")}</span>
+              </span>
+              {cricket?.currentInnings === 2 && currentInnings.target && (
+                <span className="hidden rounded-full border border-signal-gold/20 bg-signal-gold/10 px-2 py-0.5 font-mono text-[10px] font-bold text-signal-gold sm:inline">
+                  Target: {currentInnings.target}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="rounded-full border border-pitch-green/20 bg-pitch-green/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-pitch-green">
+              Live Broadcast
+            </span>
+          )}
+        </div>
+
+        {/* Main Teams & Status */}
+        <div className="space-y-1">
+          <h3 className={`font-black tracking-tight text-fg break-words ${isSingle ? "text-xl sm:text-3xl" : "text-lg sm:text-2xl"}`}>
+            <span>{meta?.teamA}</span>
+            <span className="mx-2 text-xs font-normal text-fg-faint sm:text-sm">vs</span>
+            <span>{meta?.teamB}</span>
+          </h3>
+
+          {isCricket ? (
+            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-electric">
+              <span>🏏</span> {battingTeamName} batting
+            </p>
+          ) : (
+            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-pitch-green">
+              <span>⚽</span> {football?.half || "1ST HALF"}
+            </p>
+          )}
+        </div>
+
+        {/* Score Display Box */}
+        <div className="rounded-2xl border border-border/80 bg-ink/70 p-4 flex items-center justify-between shadow-inner">
+          {isCricket ? (
+            <>
+              <div className="font-score text-3xl sm:text-4xl font-black text-fg">
+                {currentInnings?.score || 0}
+                <span className="mx-1 text-xl text-fg-faint">/</span>
+                {currentInnings?.wickets || 0}
+              </div>
+              <div className="text-right text-xs">
+                <div className="font-bold text-fg">
+                  {currentInnings?.overs || "0.0"}{" "}
+                  <span className="text-[10px] text-fg-faint font-normal">/ {cricket?.maxOvers} ov</span>
+                </div>
+                {cricket?.currentInnings === 2 && currentInnings?.target && (
+                  <div className="text-[11px] font-bold text-signal-gold">
+                    Need {Math.max(0, currentInnings.target - (currentInnings.score || 0))} runs
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-score text-3xl sm:text-4xl font-black text-fg">
+                {football?.scoreA || 0} <span className="mx-1 text-xl text-fg-faint">-</span> {football?.scoreB || 0}
+              </div>
+              <div className="text-right text-xs">
+                <span className="font-mono font-bold text-pitch-green text-sm">
+                  {footballClock.display}'
+                </span>
+                <div className="text-[10px] text-fg-muted font-semibold uppercase">{football?.half || "1ST HALF"}</div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Button to Live Match Center */}
+      <div className="relative z-10 pt-4">
+        <Link href={`/live/${id}`} className="block w-full">
+          <button className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-electric px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md shadow-electric/25 transition-all group-hover:scale-[1.01] active:scale-95">
+            <Radio size={15} />
+            <span>Enter Live Match Center</span>
+            <ArrowRight size={14} className="opacity-80 transition-transform group-hover:translate-x-1" />
+          </button>
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
+// 🔹 MAIN LIVE MATCH SECTION (হোমপেজ কম্পোনেন্ট)
+export default function LiveMatchSection() {
+  const { matches: liveMatches, loading } = useAllLiveMatches();
+
+  // হোমপেজে প্রদর্শনের জন্য সর্বোচ্চ ২টি লাইভ ম্যাচ নেওয়া
+  const displayedMatches = liveMatches.slice(0, 2);
+  const totalLiveCount = liveMatches.length;
 
   return (
     <div className="mb-6 sm:mb-10 w-full min-w-0">
       {loading ? (
-        <div className="rounded-2xl border border-border bg-panel p-8 text-center shadow-xl sm:rounded-3xl sm:p-12">
+        <div className="rounded-3xl border border-border bg-panel p-8 text-center shadow-xl sm:p-12">
           <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-border border-t-electric" />
-          <p className="text-xs font-medium text-fg-muted">Connecting to live feed...</p>
+          <p className="text-xs font-medium text-fg-muted">Scanning live broadcasts...</p>
         </div>
-      ) : isLive && meta ? (
-        /* ১. ম্যাচ লাইভ থাকলে অন-এয়ার স্কোরকার্ড */
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="group relative overflow-hidden rounded-2xl border border-border bg-panel p-4 shadow-2xl transition-colors hover:border-fg-faint sm:rounded-3xl sm:p-7"
-        >
-          <div className="pointer-events-none absolute right-0 top-0 hidden h-64 w-64 rounded-full bg-electric/15 blur-3xl sm:block" />
-          <div className="pointer-events-none absolute bottom-0 left-0 hidden h-64 w-64 rounded-full bg-signal-gold/15 blur-3xl sm:block" />
-
-          {/* Top Status & Badge Bar */}
-          <div className="relative z-10 mb-3 flex flex-col gap-2 border-b border-border pb-3 sm:mb-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-crimson opacity-75" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-crimson" />
+      ) : totalLiveCount > 0 ? (
+        <div className="space-y-4">
+          {/* Header Row when 2 or more matches are live */}
+          {totalLiveCount > 1 && (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-fg-muted">
+                Ongoing Live Matches ({totalLiveCount})
               </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-crimson">
-                ON AIR • {meta.sport}
-              </span>
-              <span className="truncate text-xs font-medium text-fg-muted">
-                • {meta.tournament || "Local Tournament"}
-              </span>
+              <Link
+                href="/live"
+                className="inline-flex items-center gap-1 text-xs font-bold text-electric transition-colors hover:underline"
+              >
+                <span>View All On-Air Hub</span>
+                <ArrowRight size={13} />
+              </Link>
             </div>
+          )}
 
-            {meta.sport === "cricket" && currentInnings ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="rounded-full border border-electric/20 bg-electric/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-electric">
-                  CRR: <span className="text-fg">{calculateCRR(currentInnings.score || 0, currentInnings.overs || "0.0")}</span>
-                </span>
-                {cricket?.currentInnings === 2 && currentInnings.target && (
-                  <span className="rounded-full border border-signal-gold/20 bg-signal-gold/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-signal-gold">
-                    Target: <span className="text-fg">{currentInnings.target}</span>
-                  </span>
-                )}
-              </div>
-            ) : (
-              <span className="w-max rounded-full border border-pitch-green/20 bg-pitch-green/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-pitch-green">
-                Live Broadcast
-              </span>
-            )}
+          {/* 🎯 ১টি ম্যাচ থাকলে ১-কলাম, ২টি ম্যাচ থাকলে ২-কলামের প্রিমিয়াম গ্রিড */}
+          <div className={`grid grid-cols-1 gap-5 ${displayedMatches.length === 2 ? "md:grid-cols-2" : ""}`}>
+            {displayedMatches.map((m) => (
+              <LiveMatchCard
+                key={m.id}
+                id={m.id}
+                data={m.data}
+                isSingle={displayedMatches.length === 1}
+              />
+            ))}
           </div>
-
-          {/* Main Teams & Score Section */}
-          <div className="relative z-10 grid grid-cols-1 items-center gap-4 sm:gap-6 md:grid-cols-2">
-            <div className="space-y-1 text-center md:text-left">
-              <h3 className="text-xl font-black tracking-tight text-fg sm:text-2xl md:text-3xl break-words">
-                <span>{meta.teamA}</span>
-                <span className="mx-1.5 text-sm font-medium text-fg-faint sm:text-xl">vs</span>
-                <span>{meta.teamB}</span>
-              </h3>
-
-              {meta.sport === "cricket" ? (
-                <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-electric md:justify-start">
-                  <span>🏏</span> {battingTeamName} batting
-                </p>
-              ) : (
-                <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-pitch-green md:justify-start">
-                  <span>⚽</span> Live Football
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col items-center justify-center space-y-3 md:items-end">
-              {meta.sport === "cricket" ? (
-                <div className="text-center md:text-right">
-                  <div className="font-score text-4xl leading-none text-fg sm:text-5xl">
-                    {currentInnings?.score || 0}
-                    <span className="mx-1 text-2xl text-fg-faint sm:text-3xl">/</span>
-                    {currentInnings?.wickets || 0}
-                  </div>
-                  <div className="mt-1 inline-block rounded-full border border-border bg-ink px-3 py-0.5 font-mono text-xs text-fg-muted">
-                    Overs: <strong className="text-fg">{currentInnings?.overs || "0.0"}</strong>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center md:text-right">
-                  <div className="font-score text-4xl leading-none text-fg sm:text-5xl">
-                    {football?.scoreA || 0} <span className="mx-1 text-2xl text-fg-faint">-</span> {football?.scoreB || 0}
-                  </div>
-                  <div className="mt-1 inline-block rounded-full border border-border bg-ink px-3 py-0.5 font-mono text-xs text-fg-muted">
-                    <span className="mr-1.5 font-bold text-pitch-green">{footballClock.display}'</span>{" "}
-                    {football?.half || "1ST HALF"}
-                  </div>
-                </div>
-              )}
-
-              <div className="w-full pt-0.5 sm:w-auto">
-                <Link href="/live" className="block w-full">
-                  <button className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-full bg-electric px-5 py-2 text-xs font-bold text-white shadow-md shadow-electric/20 transition-all hover:scale-[1.02] active:scale-95 sm:min-h-[44px] sm:text-sm">
-                    <Radio className="h-4 w-4" /> Watch Live Center
-                  </button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+        </div>
       ) : (
-        /* ২. কোনো ম্যাচ লাইভ না থাকলে: Streamvex হাইলাইট + আর্কাইভ বাটন */
+        /* ❌ কোনো ম্যাচ লাইভ না থাকলে: প্রিমিয়াম এম্পটি স্টেট */
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="relative overflow-hidden rounded-2xl border border-border bg-panel p-6 sm:p-8 text-center shadow-2xl sm:rounded-3xl"
+          className="relative overflow-hidden rounded-3xl border border-border bg-panel p-6 sm:p-8 text-center shadow-2xl"
         >
           <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-electric/10 blur-2xl" />
           <div className="pointer-events-none absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-signal-gold/10 blur-2xl" />
 
           <div className="relative z-10 space-y-3">
-            <div className="mx-auto mb-1 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl border border-border bg-ink text-fg-faint shadow-inner">
-              <Trophy size={24} className="text-signal-gold/80" />
+            <div className="mx-auto mb-1 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-ink text-fg-faint shadow-inner">
+              <Trophy size={26} className="text-signal-gold/80" />
             </div>
 
             <h3 className="text-base sm:text-lg font-bold text-fg">No Local Match Currently Live</h3>
             <p className="mx-auto max-w-md text-xs leading-relaxed text-fg-muted sm:text-sm">
-              Local tournament matches will appear here automatically when on-air. In the meantime, watch international matches live or explore previous scorecards.
+              Local tournament matches will appear here automatically when on-air. You can explore match archives or watch international games.
             </p>
 
-            {/* Action Buttons Row */}
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
-              {/* Highlighted Streamvex Button */}
               <a
-                href="https://streamvex-live.vercel.app/" // আপনার Streamvex ওয়েবসাইটের আসল URL দিয়ে রিপ্লেস করে নিবেন
+                href="https://streamvex-live.vercel.app/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group flex min-h-[42px] w-full sm:w-auto items-center justify-center gap-2 rounded-full bg-gradient-to-r from-electric via-blue-600 to-indigo-600 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-lg shadow-electric/25 transition-all hover:scale-105 active:scale-95"
@@ -163,9 +220,8 @@ export default function LiveMatchSection() {
                 <ExternalLink size={13} className="opacity-80 transition-transform group-hover:translate-x-0.5" />
               </a>
 
-              {/* Archives Button */}
               <Link href="/match-history" className="w-full sm:w-auto">
-                <button className="flex min-h-[42px] w-full sm:w-auto items-center justify-center gap-1.5 rounded-full border border-border bg-ink px-4 py-2.5 text-xs font-semibold text-fg-muted transition-colors hover:border-fg-faint hover:text-fg">
+                <button className="flex min-h-[42px] w-full sm:w-auto items-center justify-center gap-1.5 rounded-full border border-border bg-ink px-4 py-2.5 text-xs font-semibold text-fg-muted hover:border-fg-faint hover:text-fg">
                   <History size={14} className="text-signal-gold" />
                   <span>Match Archives</span>
                 </button>

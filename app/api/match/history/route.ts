@@ -1,27 +1,40 @@
 // app/api/match/history/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore } from "@/lib/firebase/admin";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const snapshot = await adminFirestore
-      .collection("matches_history")
-      .orderBy("completedAt", "desc")
-      .limit(50)
-      .get();
+    const { searchParams } = new URL(request.url);
+    const createdBy = searchParams.get("createdBy");
+
+    let snapshot;
+
+    // 🛡️ যদি কোনো নির্দিষ্ট অ্যাডমিন তার নিজের ম্যাচ চায়
+    if (createdBy) {
+      snapshot = await adminFirestore
+        .collection("matches_history")
+        .where("createdBy", "==", createdBy)
+        .get();
+    } else {
+      snapshot = await adminFirestore
+        .collection("matches_history")
+        .orderBy("completedAt", "desc")
+        .limit(50)
+        .get();
+    }
 
     if (snapshot.empty) {
       return NextResponse.json({ success: true, matches: [] });
     }
 
-    // শুধুমাত্র কার্ড রেন্ডারিংয়ের জন্য লাইটওয়েট অবজেক্ট ম্যাপ করা হয়েছে
-    const matches = snapshot.docs.map((doc: any) => {
+    let matches = snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
         sport: data.sport || data.meta?.sport || "cricket",
+        createdBy: data.createdBy || data.fullSnapshot?.meta?.createdBy || null,
         teamA: data.teamA || data.meta?.teamA || "Team A",
         teamB: data.teamB || data.meta?.teamB || "Team B",
         tournament: data.tournament || data.meta?.tournament || "Tournament Match",
@@ -32,6 +45,9 @@ export async function GET() {
         football: data.fullSnapshot?.football || data.football || null,
       };
     });
+
+    // ইন-মেমোরি ডিসেন্ডিং সর্ট (ফায়ারস্টোর ইনডেক্স এরর ছাড়া দ্রুতগতিতে লোড হবে)
+    matches.sort((a: any, b: any) => (b.completedAt || 0) - (a.completedAt || 0));
 
     return NextResponse.json({ success: true, matches });
   } catch (error: any) {

@@ -20,13 +20,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
     
     const teamA = match.teamA || match.meta?.teamA || "Team A";
     const teamB = match.teamB || match.meta?.teamB || "Team B";
-    const tournament = match.meta?.tournament || "Tournament Match";
-    const venue = match.meta?.venue ? ` • ${match.meta.venue}` : "";
+    const tournament = match.tournament || match.meta?.tournament || "Tournament Match";
+    const venue = match.venue || match.meta?.venue ? ` • ${match.venue || match.meta?.venue}` : "";
 
     const cricketSnap = match.cricket || match.fullSnapshot?.cricket;
     const footballSnap = match.football || match.fullSnapshot?.football;
 
-    let resultText = "MATCH COMPLETED";
+    // 🛡️ ১. ডেটাবেজে সংরক্ষিত অফিশিয়াল ফাইনাল রেজাল্টকে ১ নম্বর প্রাধান্য দেওয়া
+    const savedResult = match.finalResult || match.fullSnapshot?.meta?.finalResult;
+    let resultText = savedResult && savedResult !== "Match Completed" ? savedResult : "MATCH COMPLETED";
+
     let inn1Score = "0/0", inn1Overs = "0.0", inn1Team = teamA;
     let inn2Score = "0/0", inn2Overs = "0.0", inn2Team = teamB;
     let footballScoreA = 0, footballScoreB = 0;
@@ -50,28 +53,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
       const squadCount = cricketSnap.squads?.[chasingSquadKey]?.length || 11;
       const maxWickets = Math.max(1, squadCount - 1);
 
-      if (inn2) {
-        if (inn2.score >= targetScore) {
+      // যদি ফায়ারস্টোরে আগে থেকে রেজাল্ট না থাকে, তখন ডায়নামিক ক্যালকুলেট হবে
+      if (!savedResult || savedResult === "Match Completed") {
+        if (!inn2 || (!inn2.overs && inn2.score === 0) || inn2.overs === "0.0") {
+          resultText = `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} (${inn1?.overs || "0.0"} ov) • Match Incomplete`;
+        } else if (inn2.score >= targetScore) {
           const wicketsLeft = Math.max(0, maxWickets - (inn2.wickets || 0));
           resultText = `🏆 ${inn2Team.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
-        } else if (inn2.isCompleted || (inn2.overs?.endsWith(".0") && Number(inn2.overs.split(".")[0]) >= maxOvers) || inn2.wickets >= maxWickets) {
-          const runMargin = (inn1?.score || 0) - inn2.score;
-          if (runMargin > 0) {
-            resultText = `🏆 ${inn1Team.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
-          } else if (runMargin === 0) {
-            resultText = "MATCH TIED (SUPER OVER)";
+        } else {
+          const [o] = (inn2.overs || "0.0").split(".").map(Number);
+          const isInn2Finished = inn2.isCompleted || o >= maxOvers || (inn2.wickets || 0) >= maxWickets;
+
+          if (isInn2Finished) {
+            const runMargin = (inn1?.score || 0) - inn2.score;
+            if (runMargin > 0) {
+              resultText = `🏆 ${inn1Team.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
+            } else if (runMargin === 0) {
+              resultText = "MATCH TIED (SUPER OVER)";
+            }
           }
         }
       }
     } else if (footballSnap) {
       footballScoreA = footballSnap.scoreA || 0;
       footballScoreB = footballSnap.scoreB || 0;
-      if (footballScoreA > footballScoreB) {
-        resultText = `🏆 ${teamA.toUpperCase()} WON THE MATCH`;
-      } else if (footballScoreB > footballScoreA) {
-        resultText = `🏆 ${teamB.toUpperCase()} WON THE MATCH`;
-      } else {
-        resultText = "MATCH DRAW";
+      if (!savedResult || savedResult === "Match Completed") {
+        if (footballScoreA > footballScoreB) {
+          resultText = `🏆 ${teamA.toUpperCase()} WON THE MATCH`;
+        } else if (footballScoreB > footballScoreA) {
+          resultText = `🏆 ${teamB.toUpperCase()} WON THE MATCH`;
+        } else {
+          resultText = "MATCH DRAW";
+        }
       }
     }
 
@@ -213,10 +226,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
               {
                 style: {
                   color: "#FFB800",
-                  fontSize: "26px",
+                  fontSize: "24px",
                   fontWeight: "900",
                   letterSpacing: "1px",
                   textTransform: "uppercase",
+                  textAlign: "center",
                 },
               },
               resultText

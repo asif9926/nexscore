@@ -1,6 +1,9 @@
+// lib/firebase/client.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,15 +15,12 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+// Next.js hot-reload এ একাধিক ইন্সট্যান্স তৈরি হওয়া ঠেকানোর জন্য
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-const rtdb = getDatabase(app);
 
-// সেশন লোকাল স্টোরেজে স্থায়ী রাখা
-if (typeof window !== "undefined") {
-  setPersistence(auth, browserLocalPersistence).catch((err) => {
-    console.error("Firebase persistence error:", err);
-  });
-}
+export const auth = getAuth(app);
+export const rtdb = getDatabase(app);
+export const firestore = getFirestore(app);
+export const storage = getStorage(app); // 👈 Storage export
 
-export { app, auth, rtdb };
+export default app;

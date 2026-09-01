@@ -35,6 +35,7 @@ export default function NewBowlerModal({
     }
     onConfirm(selectedId);
     setSelectedId("");
+    onClose(); // 👈 এটি নিশ্চিতভাবে মডাল বন্ধ করবে
   };
 
   const handleModalUndo = () => {
@@ -54,7 +55,6 @@ export default function NewBowlerModal({
       accent="electric"
       footer={
         <div className="flex w-full items-center gap-2.5">
-          {/* ↩️ ইন-মডাল আনডু বাটন (CricHeroes Style) */}
           {onUndo && (
             <button
               type="button"

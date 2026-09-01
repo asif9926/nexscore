@@ -19,19 +19,22 @@ export type BroadcastGraphicType =
   | 'MINIMAL';
 
 export interface MatchMeta {
-  sport: 'cricket' | 'football';
-  status: 'pending' | 'live' | 'completed';
+  sport: "cricket" | "football";
+  status: "live" | "completed" | "upcoming";
+  createdBy?: string; // 🛡️ Multi-Tenant Admin UID
   teamA: string;
   teamB: string;
-  activeTheme: string;
-  showScoreboard: boolean;
-  showLogo: boolean;
-  customLogoUrl?: string | null; // কাস্টম PNG লোগো সাপোর্ট
-  currentEvent: string | null;
-  activeGraphic?: BroadcastGraphicType;
-  updatedAt: number;
   tournament?: string;
   venue?: string;
+  activeTheme?: string;
+  activeGraphic?: BroadcastGraphicType;
+  showScoreboard?: boolean;
+  showLogo?: boolean;
+  customLogoUrl?: string | null;
+  customLogoLeftUrl?: string | null;
+  currentEvent?: string | null;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface ActionLog {

@@ -3,14 +3,17 @@ import { ref, get, set, update, remove } from "firebase/database";
 import { rtdb } from "./client";
 
 /**
- * ⚡ ATOMIC ACTION COMMITTOR
- * ম্যাচ আপডেটের পূর্বে স্বয়ংক্রিয়ভাবে স্ন্যাপশট হিস্ট্রিতে সেভ করে এবং এটমিক আপডেট চালায়।
+ * ⚡ ATOMIC ACTION COMMITTOR (Multi-Tenant)
+ * নির্দিষ্ট ম্যাচের আপডেটের পূর্বে স্ন্যাপশট হিস্ট্রিতে সেভ করে এবং এটমিক আপডেট চালায়।
  */
 export async function commitActionAtomic(
+  matchId: string,
   updates: Record<string, any>,
   currentStateOrLabel?: any,
   maybeState?: any
 ) {
+  if (!matchId) return { success: false, error: "Match ID is required." };
+
   try {
     let stateToSave: any = null;
 
@@ -20,23 +23,23 @@ export async function commitActionAtomic(
     } else if (typeof maybeState === "object" && maybeState !== null) {
       stateToSave = maybeState;
     } else {
-      // যদি স্টেট পাস না করা থাকে, RTDB থেকে কারেন্ট স্টেট ফেচ করবে
-      const currentSnap = await get(ref(rtdb, "match"));
+      // যদি স্টেট পাস না করা থাকে, RTDB থেকে কারেন্ট ম্যাচ স্টেট ফেচ করবে
+      const currentSnap = await get(ref(rtdb, `matches/${matchId}`));
       if (currentSnap.exists()) {
         stateToSave = currentSnap.val();
       }
     }
 
-    // ১. পূর্বাবস্থা হিস্ট্রি লগে যুক্ত করা
+    // ১. পূর্বাবস্থা নির্দিষ্ট ম্যাচ হিস্ট্রি লগে যুক্ত করা
     if (stateToSave) {
-      const logRef = ref(rtdb, "match_actionLog");
+      const logRef = ref(rtdb, `match_actionLogs/${matchId}`);
       const snap = await get(logRef);
       const history = snap.exists() ? snap.val() : [];
       const historyList = Array.isArray(history) ? [...history] : Object.values(history);
 
       historyList.push({
         state: stateToSave,
-        previousState: JSON.stringify(stateToSave), // ব্যাকওয়ার্ড কমপ্যাটিবিলিটির জন্য
+        previousState: JSON.stringify(stateToSave),
         timestamp: Date.now(),
       });
 
@@ -51,23 +54,25 @@ export async function commitActionAtomic(
     // ২. রিয়েলটাইম ডেটাবেসে এটমিক আপডেট কার্যকর করা
     await update(ref(rtdb), {
       ...updates,
-      "match/meta/updatedAt": Date.now(),
+      [`matches/${matchId}/meta/updatedAt`]: Date.now(),
     });
 
     return { success: true };
   } catch (error) {
-    console.error("commitActionAtomic Error:", error);
+    console.error(`commitActionAtomic Error for match ${matchId}:`, error);
     throw error;
   }
 }
 
 /**
- * 🔄 ATOMIC UNDO ENGINE
- * ম্যাচ লগের সর্বশেষ স্ন্যাপশট পুনরুদ্ধার করে এবং রিয়েলটাইম ডেটাবেসে আগের অবস্থায় রোলব্যাক করে।
+ * 🔄 ATOMIC UNDO ENGINE (Multi-Tenant)
+ * নির্দিষ্ট ম্যাচের লগের সর্বশেষ স্ন্যাপশট পুনরুদ্ধার করে আগের অবস্থায় রোলব্যাক করে।
  */
-export async function undoLastAction() {
+export async function undoLastAction(matchId: string) {
+  if (!matchId) return { success: false, message: "Match ID is required." };
+
   try {
-    const logRef = ref(rtdb, "match_actionLog");
+    const logRef = ref(rtdb, `match_actionLogs/${matchId}`);
     const snapshot = await get(logRef);
 
     if (!snapshot.exists()) {
@@ -97,7 +102,7 @@ export async function undoLastAction() {
       return { success: false, message: "No actions to undo." };
     }
 
-    // 🛡️ সেইফ স্টেট এক্সট্রাকশন (State / PreviousState উভয়েই কাজ করবে)
+    // 🛡️ সেইফ স্টেট এক্সট্রাকশন
     let rawState = lastEntry.state ?? lastEntry.previousState ?? lastEntry;
     let restoredState: any = null;
 
@@ -116,7 +121,7 @@ export async function undoLastAction() {
       if (isArray) {
         await set(logRef, historyList.length > 0 ? historyList : null);
       } else if (lastEntry._key) {
-        await remove(ref(rtdb, `match_actionLog/${lastEntry._key}`));
+        await remove(ref(rtdb, `match_actionLogs/${matchId}/${lastEntry._key}`));
       }
       return { success: false, message: "Corrupted undo state removed." };
     }
@@ -125,21 +130,21 @@ export async function undoLastAction() {
       delete restoredState._key;
     }
 
-    // ১. পূর্বের অবস্থায় ম্যাচ ডেটা রি-স্টোর করা
-    await set(ref(rtdb, "match"), restoredState);
+    // ১. পূর্বের অবস্থায় নির্দিষ্ট ম্যাচের ডেটা রিস্টোর করা
+    await set(ref(rtdb, `matches/${matchId}`), restoredState);
 
     // ২. হিস্ট্রি স্ট্যাক থেকে বাদ দেওয়া
     if (isArray) {
       await set(logRef, historyList.length > 0 ? historyList : null);
     } else if (lastEntry._key) {
-      await remove(ref(rtdb, `match_actionLog/${lastEntry._key}`));
+      await remove(ref(rtdb, `match_actionLogs/${matchId}/${lastEntry._key}`));
     } else {
       await set(logRef, historyList.length > 0 ? historyList : null);
     }
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to execute undoLastAction:", error);
+    console.error(`Failed to execute undoLastAction for match ${matchId}:`, error);
     return { success: false, error };
   }
 }

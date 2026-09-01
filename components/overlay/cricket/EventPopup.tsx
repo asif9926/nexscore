@@ -1,3 +1,4 @@
+// components/overlay/cricket/EventPopup.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,7 +12,7 @@ function accentFor(eventText: string): Accent {
   if (["WICKET", "RED CARD"].includes(upper)) return "crimson";
   if (["SIX", "50 RUNS", "100 RUNS", "FIFTY", "CENTURY"].includes(upper)) return "gold";
   if (upper === "GOAL") return "green";
-  return "electric"; // FOUR, YELLOW CARD, ইত্যাদি
+  return "electric";
 }
 
 const accentMap: Record<Accent, { bg: string; border: string; glow: string; text: string }> = {
@@ -21,8 +22,8 @@ const accentMap: Record<Accent, { bg: string; border: string; glow: string; text
   green: { bg: "bg-emerald-500", border: "border-emerald-300", glow: "shadow-[0_0_80px_rgba(16,185,129,0.7)]", text: "text-slate-950" },
 };
 
-export default function EventPopup() {
-  const { matchData } = useMatchData();
+export default function EventPopup({ matchId }: { matchId?: string }) {
+  const { matchData } = useMatchData(matchId);
   const [eventText, setEventText] = useState<string | null>(null);
 
   useEffect(() => {

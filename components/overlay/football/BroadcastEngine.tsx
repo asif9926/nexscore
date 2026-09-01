@@ -1,3 +1,4 @@
+// components/overlay/football/BroadcastEngine.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,6 +7,7 @@ import { useFootballClock } from "@/lib/hooks/useFootballClock";
 import { Activity } from "lucide-react";
 
 interface Props {
+  matchId?: string;
   theme?: string;
 }
 
@@ -18,8 +20,8 @@ const getShortName = (name?: string, fallback = "TM") => {
   return name.slice(0, 3).toUpperCase();
 };
 
-export default function FootballBroadcastEngine({ theme = "premier" }: Props) {
-  const { matchData, loading } = useMatchData();
+export default function FootballBroadcastEngine({ matchId, theme = "premier" }: Props) {
+  const { matchData, loading } = useMatchData(matchId);
   const footballClock = useFootballClock(matchData?.football);
 
   if (loading || !matchData?.meta || !matchData.football || matchData.meta.showScoreboard === false) {

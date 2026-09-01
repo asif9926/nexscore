@@ -1,30 +1,19 @@
-"use client";
+// app/overlay/layout.tsx
+import type { Metadata } from "next";
+import { ReactNode } from "react";
+import OverlayThemeGuard from "@/components/overlay/OverlayThemeGuard";
 
-import { ReactNode, useEffect } from "react";
+// 🚫 OBS Studio Browser Source-এর ক্যাশিং পুরোপুরি বন্ধ করার হেড সার্বিক মেটাডাটা
+export const metadata: Metadata = {
+  title: "NexScore TV Overlay Engine",
+  robots: { index: false, follow: false },
+  other: {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  },
+};
 
 export default function OverlayLayout({ children }: { children: ReactNode }) {
-  useEffect(() => {
-    // 🛡️ OVERLAY ISOLATION GUARD:
-    // সাইটে সানলাইট/লাইট মোড সক্রিয় থাকলেও ওভারলে থেকে তা জোরপূর্বক রিমুভ করে ডার্ক ব্রডকাস্ট লক করবে
-    document.documentElement.classList.remove("sunlight");
-    document.documentElement.style.backgroundColor = "transparent";
-    document.body.style.backgroundColor = "transparent";
-
-    return () => {
-      // ওভারলে ট্যাব বন্ধ হলে আগের সেভ করা থিম পুনরুদ্ধার করবে
-      const savedMode = localStorage.getItem("nexscore_sunlight") === "true";
-      if (savedMode) {
-        document.documentElement.classList.add("sunlight");
-      }
-    };
-  }, []);
-
-  return (
-    <div 
-      data-overlay-root
-      className="relative min-h-screen w-full overflow-hidden bg-transparent font-sans select-none antialiased [transform:translateZ(0)]"
-    >
-      {children}
-    </div>
-  );
+  return <OverlayThemeGuard>{children}</OverlayThemeGuard>;
 }

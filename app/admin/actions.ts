@@ -5,14 +5,21 @@ import { adminFirestore, adminAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-// ১. ফায়ারবেস থেকে লাইটওয়েট ম্যাচ হিস্ট্রি নিয়ে আসার অ্যাকশন
-export async function getMatchHistory(): Promise<{ success: boolean; matches: any[]; error?: string }> {
+export async function getMatchHistory(createdBy?: string): Promise<{ success: boolean; matches: any[]; error?: string }> {
   try {
-    const snapshot = await adminFirestore
-      .collection("matches_history")
-      .orderBy("completedAt", "desc")
-      .limit(50)
-      .get();
+    let snapshot;
+    if (createdBy) {
+      snapshot = await adminFirestore
+        .collection("matches_history")
+        .where("createdBy", "==", createdBy)
+        .get();
+    } else {
+      snapshot = await adminFirestore
+        .collection("matches_history")
+        .orderBy("completedAt", "desc")
+        .limit(50)
+        .get();
+    }
 
     if (snapshot.empty) {
       return { success: true, matches: [] };
@@ -23,6 +30,7 @@ export async function getMatchHistory(): Promise<{ success: boolean; matches: an
       return {
         id: doc.id,
         sport: data.sport || data.meta?.sport || "cricket",
+        createdBy: data.createdBy || data.fullSnapshot?.meta?.createdBy || null,
         teamA: data.teamA || data.meta?.teamA || "Team A",
         teamB: data.teamB || data.meta?.teamB || "Team B",
         tournament: data.tournament || data.meta?.tournament || "Tournament Match",
@@ -32,18 +40,20 @@ export async function getMatchHistory(): Promise<{ success: boolean; matches: an
       };
     });
 
+    matches.sort((a: any, b: any) => (b.completedAt || 0) - (a.completedAt || 0));
+
     return { success: true, matches };
   } catch (error: any) {
-    console.error("CRITICAL Firestore getMatchHistory error:", error);
+    console.error("Firestore getMatchHistory error:", error);
     return { 
       success: false, 
       matches: [], 
-      error: error?.message || "Firestore connection failed. Check Vercel environment variables." 
+      error: error?.message || "Firestore connection failed." 
     };
   }
 }
 
-// ২. সুরক্ষিতভাবে ডেটাবেস থেকে ম্যাচ ডিলিট করার অ্যাকশন
+// 🛡️ শুধুমাত্র নিজের তৈরি করা ম্যাচ ডিলিট করার পারমিশন গার্ড
 export async function deleteMatchAction(id: string, clientToken?: string) {
   try {
     const cookieStore = await cookies();
@@ -53,25 +63,40 @@ export async function deleteMatchAction(id: string, clientToken?: string) {
       return { success: false, error: "Unauthorized access: Session token missing." };
     }
 
-    let isVerified = false;
+    let adminUid: string | null = null;
 
     try {
-      await adminAuth.verifyIdToken(token, true);
-      isVerified = true;
+      const decoded = await adminAuth.verifyIdToken(token, true);
+      adminUid = decoded.uid;
     } catch {
       try {
-        await adminAuth.verifySessionCookie(token, true);
-        isVerified = true;
+        const decoded = await adminAuth.verifySessionCookie(token, true);
+        adminUid = decoded.uid;
       } catch {
-        isVerified = false;
+        adminUid = null;
       }
     }
 
-    if (!isVerified) {
+    if (!adminUid) {
       return { success: false, error: "Invalid or expired session. Please log in again." };
     }
 
-    await adminFirestore.collection("matches_history").doc(id).delete();
+    const docRef = adminFirestore.collection("matches_history").doc(id);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      return { success: false, error: "Match record not found." };
+    }
+
+    const docData = docSnap.data();
+    const matchCreator = docData?.createdBy || docData?.fullSnapshot?.meta?.createdBy;
+
+    // 🛡️ অন্য অ্যাডমিনের ম্যাচ ডিলিট রোধ
+    if (matchCreator && matchCreator !== adminUid) {
+      return { success: false, error: "Forbidden: You cannot delete matches created by other admins." };
+    }
+
+    await docRef.delete();
 
     revalidatePath("/admin");
     revalidatePath("/match-history");

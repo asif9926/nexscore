@@ -69,7 +69,7 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
   const inn1 = cricket?.innings1;
   const inn2 = cricket?.innings2;
   const chasingSquadKey: "teamA" | "teamB" = 
-  (inn2?.battingTeam as "teamA" | "teamB") || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
+    (inn2?.battingTeam as "teamA" | "teamB") || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
   const squadLength = cricket?.squads?.[chasingSquadKey]?.length || 11;
   const maxWickets = Math.max(1, squadLength - 1);
 
@@ -171,18 +171,39 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
                     <Trophy size={13} className="shrink-0 text-signal-gold" />
                     <span className="truncate">
                       {(() => {
+                        // 🛡️ ১. ডেটাবেজে সেভ থাকা অফিশিয়াল রেজাল্ট সরাসরি ব্যবহার
+                        const savedResult = (meta as any)?.finalResult;
+                        if (savedResult && savedResult !== "Match Completed") {
+                          return savedResult;
+                        }
+
                         const inn1Team = inn1?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
                         const inn2Team = inn1?.battingTeam === "teamA" ? meta.teamB : meta.teamA;
                         const targetScore = (inn1?.score || 0) + 1;
 
-                        if (inn2) {
-                          if (inn2.score >= targetScore) {
-                            return `${inn2Team} won by ${Math.max(0, maxWickets - (inn2.wickets || 0))} wkts`;
-                          }
-                          const diff = (inn1?.score || 0) - inn2.score;
-                          return diff > 0 ? `${inn1Team} won by ${diff} runs` : "Match Tied";
+                        // 🛡️ ২. ২য় ইনিংস শুরু না হলে (বা ০.০ ওভারে ০ রান থাকলে)
+                        if (!inn2 || (!inn2.overs && inn2.score === 0) || inn2.overs === "0.0") {
+                          return `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} (${inn1?.overs || "0.0"} ov) • Match Incomplete`;
                         }
-                        return "Match Completed";
+
+                        // 🛡️ ৩. টার্গেট চেজ করে জিতলে
+                        if (inn2.score >= targetScore) {
+                          const wkts = Math.max(0, maxWickets - (inn2.wickets || 0));
+                          return `${inn2Team} won by ${wkts} wicket${wkts > 1 ? "s" : ""}`;
+                        }
+
+                        // 🛡️ ৪. ২য় ইনিংস সম্পন্ন হলে
+                        const [o] = (inn2.overs || "0.0").split(".").map(Number);
+                        const maxOvers = cricket?.maxOvers || 20;
+                        const isInn2Finished = inn2.isCompleted || o >= maxOvers || (inn2.wickets || 0) >= maxWickets;
+
+                        if (isInn2Finished) {
+                          const diff = (inn1?.score || 0) - inn2.score;
+                          if (diff > 0) return `${inn1Team} won by ${diff} run${diff > 1 ? "s" : ""}`;
+                          if (diff === 0) return "Match Tied (Super Over)";
+                        }
+
+                        return `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} • Match Incomplete`;
                       })()}
                     </span>
                   </div>

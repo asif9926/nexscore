@@ -4,8 +4,8 @@
 import { motion } from "framer-motion";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 
-export default function BroadcastLogoBadge() {
-  const { matchData, loading } = useMatchData();
+export default function BroadcastLogoBadge({ matchId }: { matchId?: string }) {
+  const { matchData, loading } = useMatchData(matchId);
 
   if (loading || !matchData?.meta || matchData.meta.showLogo === false) return null;
 
@@ -14,7 +14,7 @@ export default function BroadcastLogoBadge() {
 
   return (
     <>
-      {/* 🔹 LEFT BUG: Tournament / Sponsor Logo (শুধুমাত্র ক্রিকেটের জন্য টপ-লেফটে থাকবে) */}
+      {/* 🔹 LEFT BUG: Tournament Logo */}
       {isCricket && (
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -41,7 +41,7 @@ export default function BroadcastLogoBadge() {
         </motion.div>
       )}
 
-      {/* 🔹 RIGHT BUG: Official TV Channel Watermark (ক্রিকেট ও ফুটবলে টপ-রাইট ফিক্সড) */}
+      {/* 🔹 RIGHT BUG: TV Channel Watermark */}
       <motion.div
         initial={{ opacity: 0, x: 15 }}
         animate={{ opacity: 1, x: 0 }}

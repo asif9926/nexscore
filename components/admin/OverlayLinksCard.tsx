@@ -5,18 +5,19 @@ import { useState } from "react";
 import { Link2, Copy, Check, ExternalLink, Sparkles } from "lucide-react";
 
 interface Props {
+  matchId: string;
   sport?: "cricket" | "football";
   theme?: string;
 }
 
-export default function OverlayLinksCard({ sport = "cricket", theme }: Props) {
+export default function OverlayLinksCard({ matchId, sport = "cricket", theme }: Props) {
   const [copied, setCopied] = useState(false);
 
   const defaultTheme = sport === "football" ? "premier" : "sky";
   const activeTheme = theme || defaultTheme;
 
-  // স্পোর্ট অনুযায়ী ডাইনামিক রুট (/overlay/cricket অথবা /overlay/football)
-  const path = `/overlay/${sport}`;
+  // 🎯 নির্দিষ্ট ম্যাচ আইডি যুক্ত ডায়নামিক ওবিএস রুট
+  const path = `/overlay/${sport}/${matchId}`;
   const fullUrl = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
 
   const handleCopy = async () => {
@@ -40,7 +41,7 @@ export default function OverlayLinksCard({ sport = "cricket", theme }: Props) {
         </span>
       </div>
       <p className="mb-3 text-xs text-fg-muted">
-        OBS Studio-র Browser Source-এ এই লিংকটি অ্যাড করুন। অ্যাডমিন ড্যাশবোর্ড থেকে থিম পরিবর্তন করলে OBS-এ সাথে সাথে থিম আপডেট হবে।
+        OBS Studio-র Browser Source-এ এই লিংকটি অ্যাড করুন। এটি শুধুমাত্র এই ম্যাচের জন্য নির্দিষ্ট।
       </p>
 
       <div className="flex items-center gap-2 rounded-xl border border-border bg-ink p-3">
@@ -61,7 +62,7 @@ export default function OverlayLinksCard({ sport = "cricket", theme }: Props) {
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 p-1.5 text-fg-faint transition-colors hover:text-fg"
-          title="নতুন ট্যাবে প্রিভিউ দেখুন"
+          title="প্রিভিউ দেখুন"
         >
           <ExternalLink size={15} />
         </a>

@@ -1,12 +1,22 @@
 {
   "rules": {
-    "match": {
+    "matches": {
       ".read": true,
-      ".write": "auth != null"
+      "$matchId": {
+        ".write": "auth != null && (!data.exists() || data.child('meta/createdBy').val() === auth.uid)"
+      }
     },
-    "match_actionLog": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+    "admin_active_matches": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "match_actionLogs": {
+      "$matchId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
     }
   }
 }

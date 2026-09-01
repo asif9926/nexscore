@@ -1,6 +1,7 @@
+// app/admin/setup/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ChevronRight, 
@@ -14,11 +15,11 @@ import {
   ArrowRight 
 } from "lucide-react";
 import { Player } from "@/lib/types/match";
-import { ref, set } from "firebase/database";
-import { rtdb } from "@/lib/firebase/client";
+import { ref, set, get, update } from "firebase/database";
+import { rtdb, auth } from "@/lib/firebase/client";
+import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/lib/context/ToastContext";
-import { useMatchData } from "@/lib/context/MatchDataContext";
 import Link from "next/link";
 
 interface SetupState {
@@ -39,9 +40,11 @@ const OVERS_PRESETS = [5, 10, 15, 20, 50];
 export default function PreMatchWizard() {
   const router = useRouter();
   const { showToast } = useToast();
-  const { matchData, loading: matchLoading } = useMatchData();
 
-  // 🔹 সব React Hooks অবশ্যই কোনো Conditional Return-এর পূর্বে (উপরে) থাকবে
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [existingLiveMatch, setExistingLiveMatch] = useState<{ id: string; data: any } | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [customOvers, setCustomOvers] = useState(false);
@@ -77,20 +80,51 @@ export default function PreMatchWizard() {
     isWicketKeeper: false 
   });
 
-  const isLive = matchData?.meta?.status === "live";
+  // 🛡️ লগইন করা অ্যাডমিনের অ্যাক্টিভ ম্যাচ চেক
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.push("/admin/login");
+        return;
+      }
+      setCurrentUser(user);
 
-  // 🛡️ ১. লোডিং স্টেট গার্ড (সকল Hooks ইনিশিয়ালাইজেশনের পরে)
-  if (matchLoading) {
+      try {
+        const activeMatchRef = ref(rtdb, `admin_active_matches/${user.uid}`);
+        const activeSnap = await get(activeMatchRef);
+
+        if (activeSnap.exists()) {
+          const activeMatchId = activeSnap.val();
+          if (activeMatchId) {
+            const matchSnap = await get(ref(rtdb, `matches/${activeMatchId}`));
+            if (matchSnap.exists() && matchSnap.val()?.meta?.status === "live") {
+              setExistingLiveMatch({ id: activeMatchId, data: matchSnap.val() });
+            } else {
+              await set(activeMatchRef, null);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Notice checking active match (clean slate):", err);
+      } finally {
+        setCheckingAuth(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  if (checkingAuth) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center bg-ink text-fg">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-electric" />
-        <p className="mt-3 text-xs font-bold uppercase tracking-wider text-fg-muted">Checking live status...</p>
+        <p className="mt-3 text-xs font-bold uppercase tracking-wider text-fg-muted">Checking Admin Status...</p>
       </div>
     );
   }
 
-  // 🛡️ ২. লাইভ ম্যাচ লক গার্ড
-  if (isLive && matchData?.meta) {
+  // 🛡️ এই অ্যাডমিনের নিজস্ব লাইভ ম্যাচ সক্রিয় থাকলে
+  if (existingLiveMatch) {
     return (
       <div className="flex min-h-[75vh] flex-col items-center justify-center px-4 py-10 text-center">
         <div className="w-full max-w-md space-y-5 rounded-3xl border border-crimson/30 bg-panel p-6 shadow-2xl sm:p-8">
@@ -101,20 +135,20 @@ export default function PreMatchWizard() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-crimson/40 bg-crimson/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-crimson">
               <span className="h-2 w-2 animate-ping rounded-full bg-crimson" />
-              Match Currently Live
+              Your Match is Currently Live
             </div>
             <h2 className="text-xl font-bold text-fg sm:text-2xl">
-              {matchData.meta.teamA} vs {matchData.meta.teamB}
+              {existingLiveMatch.data.meta.teamA} vs {existingLiveMatch.data.meta.teamB}
             </h2>
             <p className="text-xs leading-relaxed text-fg-muted">
-              বর্তমানে একটি ম্যাচ সরাসরি সম্প্রচারিত হচ্ছে। নতুন ম্যাচ সেটআপ করতে হলে আগে কন্ট্রোল রুম থেকে চলমান ম্যাচটি শেষ (Archive) করতে হবে।
+              আপনার অ্যাকাউন্টে একটি ম্যাচ বর্তমানে লাইভ চলছে। নতুন ম্যাচ শুরু করতে হলে আগের ম্যাচটি কন্ট্রোল রুম থেকে সমাপ্ত (Archive) করতে হবে।
             </p>
           </div>
 
           <div className="space-y-2.5 pt-2">
-            <Link href="/admin/control" className="block w-full">
+            <Link href={`/admin/control/${existingLiveMatch.id}`} className="block w-full">
               <button className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-crimson px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-crimson/25 transition-all hover:opacity-90 active:scale-95">
-                <span>Enter Control Room</span>
+                <span>Enter Your Control Room</span>
                 <ArrowRight size={15} />
               </button>
             </Link>
@@ -132,7 +166,6 @@ export default function PreMatchWizard() {
 
   const TOTAL_STEPS = isCricket ? 4 : 2;
 
-  // ভ্যালিডেশন চেক
   const isStep1Valid = setupData.teamA.trim() !== "" && setupData.teamB.trim() !== "";
   const isStep2Valid = isCricket
     ? setupData.squadA.length >= 2 && setupData.squadB.length >= 2
@@ -217,14 +250,12 @@ export default function PreMatchWizard() {
     ];
 
     const rolesList = isCricket ? defaultCricketRoles : defaultFootballRoles;
-    
-    // পুরো নামের বদলে ৩-৪ অক্ষরের ক্যাপিটাল শর্ট কোড নেওয়া (যেমন: DHK, CTG)
     const rawName = team === "A" ? setupData.teamA.trim() : setupData.teamB.trim();
     const shortCode = rawName.length > 0 ? rawName.slice(0, 4).toUpperCase() : (team === "A" ? "TMA" : "TMB");
 
     const genericSquad: Player[] = Array.from({ length: 11 }, (_, i) => ({
       id: `p_${team.toLowerCase()}_${Date.now()}_${i + 1}`,
-      name: `${shortCode} P${i + 1}`, // 👈 "Dhaka Titans - P1"-এর বদলে তৈরি হবে "DHK P1"
+      name: `${shortCode} P${i + 1}`,
       role: (rolesList[i] || (isCricket ? "Batsman" : "Forward")) as any,
       isCaptain: i === 0,
       isWicketKeeper: isCricket && i === 2,
@@ -254,10 +285,7 @@ export default function PreMatchWizard() {
   const bowlingSquad = bowlingTeamKey === "teamA" ? setupData.squadA : setupData.squadB;
 
   const handleStartMatch = async () => {
-    if (isLive) {
-      showToast("A match is already live! Please archive it before starting a new one.", "error");
-      return;
-    }
+    if (!currentUser) return showToast("You must be logged in to create a match.", "error");
 
     if (isCricket && !isStep4Valid) {
       if (setupData.openers.striker === setupData.openers.nonStriker) {
@@ -270,10 +298,13 @@ export default function PreMatchWizard() {
 
     setLoading(true);
     try {
+      const matchId = `m_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
       const matchState: any = {
         meta: {
           sport: setupData.sport,
           status: "live",
+          createdBy: currentUser.uid,
           teamA: setupData.teamA.trim(),
           teamB: setupData.teamB.trim(),
           tournament: setupData.tournament.trim() || "Local Tournament",
@@ -283,9 +314,9 @@ export default function PreMatchWizard() {
           showScoreboard: true,
           showLogo: false,
           currentEvent: null,
+          createdAt: Date.now(),
           updatedAt: Date.now(),
         },
-        presence: { admins: {}, lastPing: Date.now() },
       };
 
       if (isCricket) {
@@ -356,10 +387,15 @@ export default function PreMatchWizard() {
         };
       }
 
-      await set(ref(rtdb, "match"), matchState);
-      await set(ref(rtdb, "match_actionLog"), null);
-      showToast("Match launched successfully!", "success");
-      router.push("/admin/control");
+      // ১. ম্যাচ ডাটা সেভ
+      await set(ref(rtdb, `matches/${matchId}`), matchState);
+      await set(ref(rtdb, `match_actionLogs/${matchId}`), null);
+      
+      // ২. অ্যাডমিনের পয়েন্টারে একটিভ ম্যাচ সেট
+      await set(ref(rtdb, `admin_active_matches/${currentUser.uid}`), matchId);
+
+      showToast("Live Match Launched Successfully!", "success");
+      router.push(`/admin/control/${matchId}`);
     } catch (error) {
       console.error("Error starting match:", error);
       showToast("Failed to start match.", "error");

@@ -3,25 +3,17 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useMatchData } from "@/lib/hooks/useMatchData";
-import { safeArray } from "@/lib/utils";
+import { safeArray, getShortName, calculateCRR, calculateRRR, calculateEconomy, calculateSR } from "@/lib/utils";
 import type { Batsman, Bowler } from "@/lib/types/match";
 import { Trophy } from "lucide-react";
 
 interface Props {
+  matchId?: string;
   theme?: string;
 }
 
-const getShortName = (name?: string, fallback = "TM") => {
-  if (!name) return fallback;
-  const parts = name.trim().split(" ");
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return name.slice(0, 3).toUpperCase();
-};
-
-export default function BroadcastEngine({ theme = "sky" }: Props) {
-  const { matchData, loading } = useMatchData();
+export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
+  const { matchData, loading } = useMatchData(matchId);
 
   if (loading || !matchData?.meta || matchData.meta.showScoreboard === false) return null;
 
@@ -44,17 +36,14 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
   const inn1BattingTeam = inn1?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
   const inn1BowlingTeam = inn1?.battingTeam === "teamA" ? meta.teamB : meta.teamA;
 
-  const [inn1Overs, inn1Balls] = (inn1?.overs || "0.0").split(".").map(Number);
-  const totalBallsInn1 = (inn1Overs || 0) * 6 + (inn1Balls || 0);
-  const inn1CRR = totalBallsInn1 > 0 ? (((inn1?.score || 0) / totalBallsInn1) * 6).toFixed(2) : "0.00";
-
+  const inn1CRR = calculateCRR(inn1?.score || 0, inn1?.overs || "0.0");
   const maxOvers = cricket?.maxOvers || 20;
   const targetScore = (inn1?.score || 0) + 1;
-  const rrr = (targetScore / maxOvers).toFixed(2);
+  const rrr = calculateRRR(targetScore, inn2?.score || 0, maxOvers, inn2?.overs || "0.0");
 
-  // 🎯 ডায়নামিক অল-আউট ক্যালকুলেশন (৬/৮/১১ যে সাইজের দলই হোক)
-  const chasingSquadKey: "teamA" | "teamB" = 
-  (inn2?.battingTeam as "teamA" | "teamB") || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
+  // ডায়নামিক অল-আউট ক্যালকুলেশন
+  const chasingSquadKey: "teamA" | "teamB" =
+    (inn2?.battingTeam as "teamA" | "teamB") || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
   const squadLength = cricket?.squads?.[chasingSquadKey]?.length || 11;
   const maxWickets = Math.max(1, squadLength - 1);
 
@@ -66,11 +55,10 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
       return `${inn1BowlingTeam.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
     }
 
-    if (
-      inn2.isCompleted ||
-      (inn2.overs.endsWith(".0") && Number(inn2.overs.split(".")[0]) >= maxOvers) ||
-      inn2.wickets >= maxWickets
-    ) {
+    const [o] = (inn2.overs || "0.0").split(".").map(Number);
+    const isInn2Finished = inn2.isCompleted || o >= maxOvers || inn2.wickets >= maxWickets;
+
+    if (isInn2Finished) {
       const runMargin = inn1.score - inn2.score;
       if (runMargin > 0) {
         return `${inn1BattingTeam.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
@@ -86,19 +74,37 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
   const batsmen = safeArray<Batsman>(innings?.batsmen);
   const bowlers = safeArray<Bowler>(innings?.bowlers);
 
-  const striker = batsmen.find((b) => b.onStrike && !b.isOut) || batsmen[0];
-  const nonStriker = batsmen.find((b) => !b.onStrike && !b.isOut) || batsmen[1];
-  const activeBowler = bowlers.find((b) => b.isActive) || bowlers[0];
+  const striker = batsmen.find((b) => b.onStrike && !b.isOut) || batsmen[0] || {
+    id: "empty-striker",
+    name: "Batsman",
+    runs: 0,
+    balls: 0,
+    fours: 0,
+    sixes: 0,
+    onStrike: true,
+    isOut: false,
+  };
 
-  const [oversCount, ballsCount] = (innings?.overs || "0.0").split(".").map(Number);
-  const totalBalls = (oversCount || 0) * 6 + (ballsCount || 0);
-  const crr = totalBalls > 0 ? (((innings?.score || 0) / totalBalls) * 6).toFixed(2) : "0.00";
+  const nonStriker = batsmen.find((b) => !b.onStrike && !b.isOut) || batsmen[1] || null;
+
+  const activeBowler = bowlers.find((b) => b.isActive) || bowlers[0] || {
+    id: "empty-bowler",
+    name: "Bowler",
+    overs: "0.0",
+    maidens: 0,
+    runs: 0,
+    wickets: 0,
+    isActive: true,
+  };
+
+  const [, ballsCount] = (innings?.overs || "0.0").split(".").map(Number);
+  const crr = calculateCRR(innings?.score || 0, innings?.overs || "0.0");
 
   const totalFours = batsmen.reduce((sum, b) => sum + (b.fours || 0), 0);
   const totalSixes = batsmen.reduce((sum, b) => sum + (b.sixes || 0), 0);
 
   const recentBallsRaw = innings?.recentBalls || [];
-  const currentOverBalls = recentBallsRaw.slice(-(ballsCount === 0 && totalBalls > 0 ? 6 : ballsCount || 6));
+  const currentOverBalls = recentBallsRaw.slice(-(ballsCount === 0 && recentBallsRaw.length > 0 ? 6 : Math.max(ballsCount || 6, 6)));
 
   const renderBallCircle = (ball: any, idx: number, isDark = true) => {
     const label = typeof ball === "object" ? ball.label : String(ball);
@@ -126,7 +132,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
   return (
     <div className="pointer-events-none fixed inset-0 z-30 font-sans select-none">
       <AnimatePresence mode="wait">
-        {/* ================= ১. INNINGS BREAK POSTER ================= */}
+        {/* INNINGS BREAK POSTER */}
         {activeGraphic === "INNINGS_BREAK" && (
           <motion.div
             key="innings-break-poster"
@@ -182,7 +188,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
           </motion.div>
         )}
 
-        {/* ================= ২. RESULT POSTER ================= */}
+        {/* RESULT POSTER */}
         {activeGraphic === "RESULT_POSTER" && (
           <motion.div
             key="result-poster"
@@ -229,7 +235,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
           </motion.div>
         )}
 
-        {/* ================= ৩. স্পটলাইট পপআপস ================= */}
+        {/* BATTER SPOTLIGHT */}
         {activeGraphic === "BATSMAN_CARD" && striker && (
           <motion.div
             key="batsman-card"
@@ -252,13 +258,14 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
                 </div>
                 <div className="border-l border-slate-800 pl-4 text-xs font-semibold text-slate-300">
                   <div>4s: <span className="font-bold text-white">{striker.fours || 0}</span> • 6s: <span className="font-bold text-white">{striker.sixes || 0}</span></div>
-                  <div>SR: <span className="font-bold text-emerald-400">{striker.balls > 0 ? ((striker.runs / striker.balls) * 100).toFixed(1) : "0.0"}</span></div>
+                  <div>SR: <span className="font-bold text-emerald-400">{calculateSR(striker.runs, striker.balls)}</span></div>
                 </div>
               </div>
             </div>
           </motion.div>
         )}
 
+        {/* BOWLER SPOTLIGHT */}
         {activeGraphic === "BOWLER_CARD" && activeBowler && (
           <motion.div
             key="bowler-card"
@@ -281,22 +288,14 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
                 </div>
                 <div className="border-l border-slate-800 pl-4 text-xs font-semibold text-slate-300">
                   <div>Overs: <span className="font-bold text-white">{activeBowler.overs}</span> • Maidens: <span className="font-bold text-white">{activeBowler.maidens}</span></div>
-                  <div>
-                    Econ:{" "}
-                    <span className="font-bold text-amber-400">
-                      {(() => {
-                        const [bO, bB] = (activeBowler.overs || "0.0").split(".").map(Number);
-                        const bTotal = (bO || 0) + (bB || 0) / 6;
-                        return bTotal > 0 ? (activeBowler.runs / bTotal).toFixed(2) : "0.00";
-                      })()}
-                    </span>
-                  </div>
+                  <div>Econ: <span className="font-bold text-amber-400">{calculateEconomy(activeBowler.runs, activeBowler.overs)}</span></div>
                 </div>
               </div>
             </div>
           </motion.div>
         )}
 
+        {/* PARTNERSHIP SPOTLIGHT */}
         {activeGraphic === "PARTNERSHIP_CARD" && striker && nonStriker && (
           <motion.div
             key="partnership-card"
@@ -326,6 +325,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
           </motion.div>
         )}
 
+        {/* MATCH SUMMARY SPOTLIGHT */}
         {activeGraphic === "MATCH_SUMMARY" && (
           <motion.div
             key="match-summary-card"
@@ -358,10 +358,10 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
           </motion.div>
         )}
 
-        {/* ================= ৪. LOWER THIRD THEMES ================= */}
+        {/* LOWER THIRD THEMES */}
         {activeGraphic === "LOWER_THIRD" && (
           <>
-            {/* THEME 1: SONY / SKY / PCB PRO */}
+            {/* THEME 1: SKY */}
             {activeTheme === "sky" && (
               <motion.div
                 key="theme-sky"
@@ -414,7 +414,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
               </motion.div>
             )}
 
-            {/* THEME 2: ULTRA DARK MATRIX */}
+            {/* THEME 2: DARK */}
             {activeTheme === "dark" && (
               <motion.div
                 key="theme-dark"
@@ -464,7 +464,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
               </motion.div>
             )}
 
-            {/* THEME 3: PSL CYBER NEON */}
+            {/* THEME 3: PSL */}
             {activeTheme === "psl" && (
               <motion.div
                 key="theme-psl"
@@ -511,7 +511,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
               </motion.div>
             )}
 
-            {/* THEME 4: FOX SPORTS */}
+            {/* THEME 4: FOX */}
             {activeTheme === "fox" && (
               <motion.div
                 key="theme-fox"
@@ -560,7 +560,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
               </motion.div>
             )}
 
-            {/* THEME 5: IPL NEON CHYRON */}
+            {/* THEME 5: IPL */}
             {activeTheme === "ipl" && (
               <motion.div
                 key="theme-ipl"
@@ -609,7 +609,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
               </motion.div>
             )}
 
-            {/* THEME 6: MINIMAL COMPACT BAR */}
+            {/* THEME 6: MINIMAL */}
             {activeTheme === "minimal" && (
               <motion.div
                 key="theme-minimal"

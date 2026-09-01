@@ -1,3 +1,4 @@
+// lib/hooks/useFootballScoring.ts
 "use client";
 
 import { useState } from "react";
@@ -10,12 +11,13 @@ export function useFootballScoring(matchData: MatchData | null) {
   const { showToast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const matchId = (matchData as any)?.id;
   const football = matchData?.football;
   const footballClock = useFootballClock(football);
 
   // ১. টাইমার টগল (স্টার্ট / পজ)
   const handleToggleTimer = async () => {
-    if (!football || isProcessing) return;
+    if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
 
     try {
@@ -25,26 +27,22 @@ export function useFootballScoring(matchData: MatchData | null) {
       let updates: Record<string, any> = {};
 
       if (isCurrentlyRunning) {
-        // পজ করা হচ্ছে — বর্তমান পর্যন্ত অতিক্রান্ত সেকেন্ড হিসেব করে সেভ
         const additional = football.startedAt ? Math.floor((now - football.startedAt) / 1000) : 0;
         const totalElapsed = (football.elapsedSeconds || 0) + additional;
 
         updates = {
-          "match/football/isRunning": false,
-          "match/football/startedAt": null,
-          "match/football/elapsedSeconds": totalElapsed,
-          "match/meta/updatedAt": now,
+          [`matches/${matchId}/football/isRunning`]: false,
+          [`matches/${matchId}/football/startedAt`]: null,
+          [`matches/${matchId}/football/elapsedSeconds`]: totalElapsed,
         };
       } else {
-        // রানিং করা হচ্ছে
         updates = {
-          "match/football/isRunning": true,
-          "match/football/startedAt": now,
-          "match/meta/updatedAt": now,
+          [`matches/${matchId}/football/isRunning`]: true,
+          [`matches/${matchId}/football/startedAt`]: now,
         };
       }
 
-      await commitActionAtomic(updates, "Toggle Football Clock", { "match/football": football });
+      await commitActionAtomic(matchId, updates, "Toggle Football Clock", { football });
     } catch (error) {
       console.error("Failed to toggle timer:", error);
       showToast("Timer update failed.", "error");
@@ -55,11 +53,10 @@ export function useFootballScoring(matchData: MatchData | null) {
 
   // ২. হাফ পরিবর্তন (1st Half, Half Time, 2nd Half, Full Time)
   const handleHalfChange = async (halfLabel: string) => {
-    if (!football || isProcessing) return;
+    if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
 
     try {
-      const now = Date.now();
       const isSecondHalf = halfLabel === "2ND HALF";
       const isHalfTime = halfLabel === "HALF TIME";
       const isFullTime = halfLabel === "FULL TIME";
@@ -78,15 +75,14 @@ export function useFootballScoring(matchData: MatchData | null) {
       }
 
       const updates = {
-        "match/football/half": halfLabel,
-        "match/football/currentHalf": isSecondHalf || isFullTime ? 2 : 1,
-        "match/football/isRunning": newIsRunning,
-        "match/football/startedAt": newStartedAt,
-        "match/football/elapsedSeconds": newElapsed,
-        "match/meta/updatedAt": now,
+        [`matches/${matchId}/football/half`]: halfLabel,
+        [`matches/${matchId}/football/currentHalf`]: isSecondHalf || isFullTime ? 2 : 1,
+        [`matches/${matchId}/football/isRunning`]: newIsRunning,
+        [`matches/${matchId}/football/startedAt`]: newStartedAt,
+        [`matches/${matchId}/football/elapsedSeconds`]: newElapsed,
       };
 
-      await commitActionAtomic(updates, `Change Half to ${halfLabel}`, { "match/football": football });
+      await commitActionAtomic(matchId, updates, `Change Half to ${halfLabel}`, { football });
       showToast(`Half changed to ${halfLabel}`, "info");
     } catch (error) {
       console.error("Failed to change half:", error);
@@ -107,7 +103,7 @@ export function useFootballScoring(matchData: MatchData | null) {
       minute: number;
     }
   ) => {
-    if (!football || isProcessing) return;
+    if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
 
     try {
@@ -142,14 +138,13 @@ export function useFootballScoring(matchData: MatchData | null) {
       const updatedEvents = [...(football.events || []), newEvent];
 
       const updates = {
-        [`match/football/score${team}`]: team === "A" ? newScoreA : newScoreB,
-        [`match/football/${currentHalfKey}`]: updatedHalf,
-        "match/football/events": updatedEvents,
-        "match/meta/currentEvent": "GOAL",
-        "match/meta/updatedAt": now,
+        [`matches/${matchId}/football/score${team}`]: team === "A" ? newScoreA : newScoreB,
+        [`matches/${matchId}/football/${currentHalfKey}`]: updatedHalf,
+        [`matches/${matchId}/football/events`]: updatedEvents,
+        [`matches/${matchId}/meta/currentEvent`]: "GOAL",
       };
 
-      await commitActionAtomic(updates, `Goal for Team ${team} by ${details.scorerName}`, { "match/football": football });
+      await commitActionAtomic(matchId, updates, `Goal for Team ${team} by ${details.scorerName}`, { football });
       showToast(`⚽ GOAL! ${details.scorerName} (${details.minute}')`, "success");
     } catch (error) {
       console.error("Error recording goal:", error);
@@ -169,7 +164,7 @@ export function useFootballScoring(matchData: MatchData | null) {
       minute: number;
     }
   ) => {
-    if (!football || isProcessing) return;
+    if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
 
     try {
@@ -192,13 +187,12 @@ export function useFootballScoring(matchData: MatchData | null) {
       const updatedEvents = [...(football.events || []), newEvent];
 
       const updates: Record<string, any> = {
-        [`match/football/${isRed ? "redCards" : "yellowCards"}${team}`]: isRed ? currentRed + 1 : currentYellow + 1,
-        "match/football/events": updatedEvents,
-        "match/meta/currentEvent": isRed ? "RED CARD" : "YELLOW CARD",
-        "match/meta/updatedAt": now,
+        [`matches/${matchId}/football/${isRed ? "redCards" : "yellowCards"}${team}`]: isRed ? currentRed + 1 : currentYellow + 1,
+        [`matches/${matchId}/football/events`]: updatedEvents,
+        [`matches/${matchId}/meta/currentEvent`]: isRed ? "RED CARD" : "YELLOW CARD",
       };
 
-      await commitActionAtomic(updates, `${isRed ? "Red" : "Yellow"} Card for ${details.playerName}`, { "match/football": football });
+      await commitActionAtomic(matchId, updates, `${isRed ? "Red" : "Yellow"} Card for ${details.playerName}`, { football });
       showToast(`${isRed ? "🟥 Red Card" : "🟨 Yellow Card"} — ${details.playerName}`, isRed ? "error" : "info");
     } catch (error) {
       console.error("Error recording card:", error);
@@ -210,7 +204,7 @@ export function useFootballScoring(matchData: MatchData | null) {
 
   // ৫. পজেশন অ্যাডজাস্টমেন্ট
   const handlePossessionAdjust = async (team: "A" | "B", delta: number) => {
-    if (!football || isProcessing) return;
+    if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
 
     try {
@@ -226,11 +220,10 @@ export function useFootballScoring(matchData: MatchData | null) {
       };
 
       const updates = {
-        [`match/football/${currentHalfKey}/possession`]: newPossession,
-        "match/meta/updatedAt": Date.now(),
+        [`matches/${matchId}/football/${currentHalfKey}/possession`]: newPossession,
       };
 
-      await commitActionAtomic(updates, "Adjust Possession", { "match/football": football });
+      await commitActionAtomic(matchId, updates, "Adjust Possession", { football });
     } catch (error) {
       console.error("Failed to adjust possession:", error);
     } finally {
