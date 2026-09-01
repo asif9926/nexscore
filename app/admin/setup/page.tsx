@@ -11,8 +11,7 @@ import {
   Shield, 
   Sparkles, 
   Radio, 
-  ArrowRight,
-  ShieldAlert
+  ArrowRight 
 } from "lucide-react";
 import { Player } from "@/lib/types/match";
 import { ref, set } from "firebase/database";
@@ -42,6 +41,7 @@ export default function PreMatchWizard() {
   const { showToast } = useToast();
   const { matchData, loading: matchLoading } = useMatchData();
 
+  // 🔹 সব React Hooks অবশ্যই কোনো Conditional Return-এর পূর্বে (উপরে) থাকবে
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [customOvers, setCustomOvers] = useState(false);
@@ -59,9 +59,27 @@ export default function PreMatchWizard() {
     openers: { striker: "", nonStriker: "", bowler: "" },
   });
 
+  const isCricket = setupData.sport === "cricket";
+  const currentRoles = isCricket 
+    ? ["Batsman", "Bowler", "All-rounder"] 
+    : ["Forward", "Midfielder", "Defender", "Goalkeeper"];
+
+  const [playerInputA, setPlayerInputA] = useState({ 
+    name: "", 
+    role: "Batsman", 
+    isCaptain: false, 
+    isWicketKeeper: false 
+  });
+  const [playerInputB, setPlayerInputB] = useState({ 
+    name: "", 
+    role: "Batsman", 
+    isCaptain: false, 
+    isWicketKeeper: false 
+  });
+
   const isLive = matchData?.meta?.status === "live";
 
-  // 🛡️ ১. লোডিং স্টেট গার্ড
+  // 🛡️ ১. লোডিং স্টেট গার্ড (সকল Hooks ইনিশিয়ালাইজেশনের পরে)
   if (matchLoading) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center bg-ink text-fg">
@@ -71,7 +89,7 @@ export default function PreMatchWizard() {
     );
   }
 
-  // 🛡️ ২. লাইভ ম্যাচ লক গার্ড (ম্যাচ লাইভ থাকলে সেটআপ পেজ সম্পূর্ণ ব্লক থাকবে)
+  // 🛡️ ২. লাইভ ম্যাচ লক গার্ড
   if (isLive && matchData?.meta) {
     return (
       <div className="flex min-h-[75vh] flex-col items-center justify-center px-4 py-10 text-center">
@@ -112,12 +130,7 @@ export default function PreMatchWizard() {
     );
   }
 
-  const isCricket = setupData.sport === "cricket";
   const TOTAL_STEPS = isCricket ? 4 : 2;
-  const currentRoles = isCricket ? ["Batsman", "Bowler", "All-rounder"] : ["Forward", "Midfielder", "Defender", "Goalkeeper"];
-
-  const [playerInputA, setPlayerInputA] = useState({ name: "", role: currentRoles[0], isCaptain: false, isWicketKeeper: false });
-  const [playerInputB, setPlayerInputB] = useState({ name: "", role: currentRoles[0], isCaptain: false, isWicketKeeper: false });
 
   // ভ্যালিডেশন চেক
   const isStep1Valid = setupData.teamA.trim() !== "" && setupData.teamB.trim() !== "";
@@ -163,7 +176,9 @@ export default function PreMatchWizard() {
       sport,
       openers: { striker: "", nonStriker: "", bowler: "" },
     }));
-    const newRoles = sport === "cricket" ? ["Batsman", "Bowler", "All-rounder"] : ["Forward", "Midfielder", "Defender", "Goalkeeper"];
+    const newRoles = sport === "cricket" 
+      ? ["Batsman", "Bowler", "All-rounder"] 
+      : ["Forward", "Midfielder", "Defender", "Goalkeeper"];
     setPlayerInputA((p) => ({ ...p, role: newRoles[0], isWicketKeeper: false }));
     setPlayerInputB((p) => ({ ...p, role: newRoles[0], isWicketKeeper: false }));
   };
@@ -379,7 +394,7 @@ export default function PreMatchWizard() {
             {step === 1 && (
               <motion.div key="step1" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-5">
                 <div className="flex items-center justify-between border-b border-border pb-3">
-                  <h2 className="text-lg font-bold text-fg">1. Teams & Sport</h2>
+                  <h2 className="text-lg font-bold text-fg">1. Teams &amp; Sport</h2>
                   <span className="text-xs font-bold text-crimson">* Required</span>
                 </div>
                 <div>
@@ -456,7 +471,7 @@ export default function PreMatchWizard() {
             {step === 2 && (
               <motion.div key="step2" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-5">
                 <div className="flex items-center justify-between border-b border-border pb-3">
-                  <h2 className="text-lg font-bold text-fg">2. Squad & Roles</h2>
+                  <h2 className="text-lg font-bold text-fg">2. Squad &amp; Roles</h2>
                   <span className="text-xs font-bold text-crimson">* Min {isCricket ? "2" : "1"} player(s) each</span>
                 </div>
                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">

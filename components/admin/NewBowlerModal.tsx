@@ -1,7 +1,8 @@
+// components/admin/NewBowlerModal.tsx
 "use client";
 
 import { useState } from "react";
-import { UserPlus } from "lucide-react";
+import { UserPlus, RotateCcw } from "lucide-react";
 import { useToast } from "@/lib/context/ToastContext";
 import ResponsiveModal from "@/components/common/ResponsiveModal";
 import type { Player } from "@/lib/types/match";
@@ -10,6 +11,7 @@ interface NewBowlerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (bowlerId: string) => void;
+  onUndo?: () => void;
   bowlingSquad: Player[];
   activeBowlerId?: string;
   isMandatory?: boolean;
@@ -19,45 +21,62 @@ export default function NewBowlerModal({
   isOpen,
   onClose,
   onConfirm,
-  bowlingSquad,
+  onUndo,
+  bowlingSquad = [],
   activeBowlerId,
-  isMandatory = false,
 }: NewBowlerModalProps) {
   const { showToast } = useToast();
   const [selectedId, setSelectedId] = useState<string>("");
 
   const handleSubmit = () => {
-    if (!selectedId) return showToast("Please choose a bowler to proceed.", "error");
+    if (!selectedId) {
+      showToast("দয়া করে একজন বোলার নির্বাচন করুন।", "error");
+      return;
+    }
     onConfirm(selectedId);
     setSelectedId("");
   };
 
-  const handleClose = () => {
-    if (isMandatory) {
-      showToast("নতুন ওভারের জন্য বোলার নির্বাচন করা বাধ্যতামূলক!", "error");
-      return;
+  const handleModalUndo = () => {
+    if (onUndo) {
+      onUndo();
+      onClose();
+      showToast("আগের বল আনডু করা হয়েছে।", "info");
     }
-    onClose();
   };
 
   return (
     <ResponsiveModal
       isOpen={isOpen}
-      onClose={handleClose}
+      onClose={onClose}
       title="Select Next Bowler"
       icon={<UserPlus size={20} />}
       accent="electric"
       footer={
-        <div className="flex gap-3">
-          {!isMandatory && (
+        <div className="flex w-full items-center gap-2.5">
+          {/* ↩️ ইন-মডাল আনডু বাটন (CricHeroes Style) */}
+          {onUndo && (
             <button
-              onClick={onClose}
-              className="rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
+              type="button"
+              onClick={handleModalUndo}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-crimson/40 bg-crimson/15 px-3.5 py-2.5 text-xs font-bold text-crimson transition-all hover:bg-crimson/25 active:scale-95"
+              title="আগের বলটিতে কোনো ভুল থাকলে আনডু করুন"
             >
-              Cancel
+              <RotateCcw size={13} />
+              <span>Undo Ball</span>
             </button>
           )}
+
           <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
+          >
+            Close
+          </button>
+
+          <button
+            type="button"
             onClick={handleSubmit}
             disabled={!selectedId}
             className="min-h-[44px] flex-1 rounded-xl bg-electric px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-electric/20 transition-opacity hover:opacity-90 disabled:opacity-40"
@@ -70,21 +89,20 @@ export default function NewBowlerModal({
       <div>
         <div className="mb-3 flex items-center justify-between">
           <label className="text-xs font-bold uppercase tracking-wider text-fg-muted">
-            Choose bowler for next over *
+            Choose bowler for next over
           </label>
-          {isMandatory && (
-            <span className="rounded bg-crimson/15 px-2 py-0.5 text-[10px] font-bold text-crimson">
-              Required
-            </span>
-          )}
+          <span className="rounded bg-electric/15 px-2 py-0.5 text-[10px] font-bold text-electric">
+            Over Finished
+          </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid max-h-[260px] grid-cols-2 gap-2.5 overflow-y-auto pr-1">
           {bowlingSquad
             .filter((p) => p.id !== activeBowlerId)
             .map((p) => (
               <button
                 key={p.id}
+                type="button"
                 onClick={() => setSelectedId(p.id)}
                 className={`min-h-[46px] rounded-xl border-2 px-3 py-2 text-left text-xs font-bold transition-all ${
                   selectedId === p.id
@@ -93,7 +111,7 @@ export default function NewBowlerModal({
                 }`}
               >
                 <span className="block truncate">{p.name}</span>
-                <span className="text-[9px] uppercase font-normal text-fg-faint">{p.role}</span>
+                <span className="text-[9px] font-normal uppercase text-fg-faint">{p.role}</span>
               </button>
             ))}
         </div>

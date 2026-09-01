@@ -1,74 +1,145 @@
-import { ref, update, push, get, query, orderByKey, limitToLast } from "firebase/database";
+// lib/firebase/actions.ts
+import { ref, get, set, update, remove } from "firebase/database";
 import { rtdb } from "./client";
 
-const ACTION_LOG_PATH = "match_actionLog";
-const MAX_ACTION_LOG_ENTRIES = 25;
-
 /**
- * Atomic Commit: ডেটা আপডেট এবং ActionLog পুশ একই ট্রানজ্যাকশনে সম্পন্ন করে
+ * ⚡ ATOMIC ACTION COMMITTOR
+ * ম্যাচ আপডেটের পূর্বে স্বয়ংক্রিয়ভাবে স্ন্যাপশট হিস্ট্রিতে সেভ করে এবং এটমিক আপডেট চালায়।
  */
-export const commitActionAtomic = async (
-  stateUpdates: Record<string, any>,
-  actionType: string,
-  previousPaths: Record<string, any>
-) => {
-  const newLogKey = push(ref(rtdb, ACTION_LOG_PATH)).key;
-
-  const updates: Record<string, any> = {
-    ...stateUpdates,
-    [`${ACTION_LOG_PATH}/${newLogKey}`]: {
-      timestamp: Date.now(),
-      type: actionType,
-      previousState: JSON.stringify(previousPaths),
-    },
-  };
-
-  const result = await update(ref(rtdb), updates);
-
+export async function commitActionAtomic(
+  updates: Record<string, any>,
+  currentStateOrLabel?: any,
+  maybeState?: any
+) {
   try {
-    await pruneActionLog();
-  } catch (err) {
-    console.warn("actionLog prune skipped:", err);
-  }
+    let stateToSave: any = null;
 
-  return result;
-};
+    // পাস করা স্টেট চেক (২য় বা ৩য় আর্গুমেন্ট থেকে)
+    if (typeof currentStateOrLabel === "object" && currentStateOrLabel !== null) {
+      stateToSave = currentStateOrLabel;
+    } else if (typeof maybeState === "object" && maybeState !== null) {
+      stateToSave = maybeState;
+    } else {
+      // যদি স্টেট পাস না করা থাকে, RTDB থেকে কারেন্ট স্টেট ফেচ করবে
+      const currentSnap = await get(ref(rtdb, "match"));
+      if (currentSnap.exists()) {
+        stateToSave = currentSnap.val();
+      }
+    }
 
-const pruneActionLog = async () => {
-  const logQuery = query(ref(rtdb, ACTION_LOG_PATH), orderByKey());
-  const snapshot = await get(logQuery);
-  if (!snapshot.exists()) return;
+    // ১. পূর্বাবস্থা হিস্ট্রি লগে যুক্ত করা
+    if (stateToSave) {
+      const logRef = ref(rtdb, "match_actionLog");
+      const snap = await get(logRef);
+      const history = snap.exists() ? snap.val() : [];
+      const historyList = Array.isArray(history) ? [...history] : Object.values(history);
 
-  const entries = Object.keys(snapshot.val());
-  if (entries.length > MAX_ACTION_LOG_ENTRIES) {
-    const toDelete = entries.slice(0, entries.length - MAX_ACTION_LOG_ENTRIES);
-    const deleteUpdates: Record<string, null> = {};
-    toDelete.forEach((key) => {
-      deleteUpdates[`${ACTION_LOG_PATH}/${key}`] = null;
+      historyList.push({
+        state: stateToSave,
+        previousState: JSON.stringify(stateToSave), // ব্যাকওয়ার্ড কমপ্যাটিবিলিটির জন্য
+        timestamp: Date.now(),
+      });
+
+      // সর্বোচ্চ ২৫টি অ্যাকশন সংরক্ষণ করবে
+      if (historyList.length > 25) {
+        historyList.shift();
+      }
+
+      await set(logRef, historyList);
+    }
+
+    // ২. রিয়েলটাইম ডেটাবেসে এটমিক আপডেট কার্যকর করা
+    await update(ref(rtdb), {
+      ...updates,
+      "match/meta/updatedAt": Date.now(),
     });
-    await update(ref(rtdb), deleteUpdates);
+
+    return { success: true };
+  } catch (error) {
+    console.error("commitActionAtomic Error:", error);
+    throw error;
   }
-};
+}
 
 /**
- * Undo Engine: সর্বশেষ লগ থেকে সম্পূর্ণ স্ন্যাপশট নিখুঁতভাবে রিস্টোর করে
+ * 🔄 ATOMIC UNDO ENGINE
+ * ম্যাচ লগের সর্বশেষ স্ন্যাপশট পুনরুদ্ধার করে এবং রিয়েলটাইম ডেটাবেসে আগের অবস্থায় রোলব্যাক করে।
  */
-export const undoLastAction = async () => {
-  const logQuery = query(ref(rtdb, ACTION_LOG_PATH), orderByKey(), limitToLast(1));
-  const snapshot = await get(logQuery);
+export async function undoLastAction() {
+  try {
+    const logRef = ref(rtdb, "match_actionLog");
+    const snapshot = await get(logRef);
 
-  if (!snapshot.exists()) return null;
+    if (!snapshot.exists()) {
+      return { success: false, message: "No actions to undo." };
+    }
 
-  const logEntry = snapshot.val();
-  const logKey = Object.keys(logEntry)[0];
-  const previousState = JSON.parse(logEntry[logKey].previousState);
+    const logData = snapshot.val();
+    if (!logData) return { success: false, message: "No actions to undo." };
 
-  const updates: Record<string, any> = {};
+    let historyList: any[] = [];
+    const isArray = Array.isArray(logData);
 
-  for (const [path, val] of Object.entries(previousState)) {
-    updates[path] = val === undefined ? null : val;
+    if (isArray) {
+      historyList = [...logData];
+    } else if (typeof logData === "object") {
+      const keys = Object.keys(logData);
+      historyList = keys.map((key) => ({ _key: key, ...logData[key] }));
+    }
+
+    if (historyList.length === 0) {
+      return { success: false, message: "No actions to undo." };
+    }
+
+    // সর্বশেষ স্ন্যাপশটটি নেওয়া
+    const lastEntry = historyList.pop();
+    if (!lastEntry) {
+      return { success: false, message: "No actions to undo." };
+    }
+
+    // 🛡️ সেইফ স্টেট এক্সট্রাকশন (State / PreviousState উভয়েই কাজ করবে)
+    let rawState = lastEntry.state ?? lastEntry.previousState ?? lastEntry;
+    let restoredState: any = null;
+
+    if (typeof rawState === "string") {
+      try {
+        restoredState = JSON.parse(rawState);
+      } catch {
+        restoredState = null;
+      }
+    } else if (typeof rawState === "object" && rawState !== null) {
+      restoredState = rawState;
+    }
+
+    if (!restoredState) {
+      console.warn("Corrupted undo entry skipped:", lastEntry);
+      if (isArray) {
+        await set(logRef, historyList.length > 0 ? historyList : null);
+      } else if (lastEntry._key) {
+        await remove(ref(rtdb, `match_actionLog/${lastEntry._key}`));
+      }
+      return { success: false, message: "Corrupted undo state removed." };
+    }
+
+    if (restoredState._key) {
+      delete restoredState._key;
+    }
+
+    // ১. পূর্বের অবস্থায় ম্যাচ ডেটা রি-স্টোর করা
+    await set(ref(rtdb, "match"), restoredState);
+
+    // ২. হিস্ট্রি স্ট্যাক থেকে বাদ দেওয়া
+    if (isArray) {
+      await set(logRef, historyList.length > 0 ? historyList : null);
+    } else if (lastEntry._key) {
+      await remove(ref(rtdb, `match_actionLog/${lastEntry._key}`));
+    } else {
+      await set(logRef, historyList.length > 0 ? historyList : null);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to execute undoLastAction:", error);
+    return { success: false, error };
   }
-  updates[`${ACTION_LOG_PATH}/${logKey}`] = null;
-
-  return update(ref(rtdb), updates);
-};
+}

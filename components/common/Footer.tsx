@@ -13,7 +13,6 @@ export default function Footer() {
   return (
     <footer className="relative z-20 mt-auto border-t border-border bg-ink/80 py-10 text-fg-muted backdrop-blur-xl">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        
         <div className="flex flex-col items-center justify-between gap-8 md:flex-row md:items-start">
           
           {/* Left: Brand Identity */}
@@ -24,18 +23,18 @@ export default function Footer() {
                 V1.0
               </span>
             </div>
-            <p className="max-w-md text-xs sm:text-sm leading-relaxed text-fg-muted">
+            <p className="max-w-md text-xs leading-relaxed text-fg-muted sm:text-sm">
               Next-Generation Live Sports Engine. Ultra-low latency scoreboard and broadcast overlay system for
-              local cricket & football tournaments.
+              local cricket &amp; football tournaments.
             </p>
           </div>
 
           {/* Right: Admin & Developer Info */}
-          <div className="flex flex-col items-center md:items-end gap-4">
+          <div className="flex flex-col items-center gap-4 md:items-end">
             
-            {/* 1. Admin Portal Link */}
+            {/* 1. Admin Portal Link (সরাসরি /admin পাথে যাবে) */}
             <Link
-              href="/admin/login"
+              href="/admin"
               className="group flex items-center gap-2 text-sm font-semibold text-fg/80 transition-colors hover:text-fg"
             >
               <ShieldCheck size={18} className="text-electric group-hover:text-electric/80" />
@@ -44,26 +43,25 @@ export default function Footer() {
               </span>
             </Link>
 
-            {/* 2. Premium Developer Card with Profile Link */}
-            <div className="flex flex-col items-center md:items-end gap-2.5 rounded-2xl border border-border/50 bg-panel/40 p-4 shadow-sm backdrop-blur-md">
+            {/* 2. Developer Card */}
+            <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-border/50 bg-panel/40 p-4 shadow-sm backdrop-blur-md md:items-end">
               <Link
                 href="/about-developer"
                 className="group flex items-center gap-1.5 text-xs text-fg-muted transition-colors hover:text-electric"
               >
                 <Code2 size={14} className="text-electric" />
-                <span>Engineered & Maintained by</span>
-                <span className="font-bold text-fg group-hover:text-electric underline decoration-border underline-offset-2">
-                  Asif
+                <span>Engineered &amp; Maintained by</span>
+                <span className="font-bold text-fg underline decoration-border underline-offset-2 group-hover:text-electric">
+                  Tahmid
                 </span>
-                <ArrowUpRight size={13} className="opacity-70 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                <ArrowUpRight size={13} className="opacity-70 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </Link>
               
-              {/* WhatsApp Contact Button */}
               <a
-                href="https://wa.me/8801710256453" // <-- আপনার আসল WhatsApp নাম্বার বসিয়ে দিন
+                href="https://wa.me/8801710256453"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group flex items-center gap-2 rounded-full border border-[#25D366]/20 bg-[#25D366]/10 px-4 py-1.5 text-xs font-bold text-[#25D366] transition-all hover:bg-[#25D366]/20 hover:text-white shadow-sm"
+                className="group flex items-center gap-2 rounded-full border border-[#25D366]/20 bg-[#25D366]/10 px-4 py-1.5 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"
               >
                 <MessageCircle size={14} className="group-hover:animate-pulse" />
                 <span>Developer Support</span>
@@ -73,7 +71,7 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Bottom: Status & Copyright */}
+        {/* Bottom Status */}
         <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-border/50 pt-6 text-xs text-fg-faint sm:flex-row">
           <div className="flex items-center gap-2 rounded-full border border-pitch-green/20 bg-pitch-green/5 px-3 py-1">
             <div className="h-2 w-2 animate-pulse rounded-full bg-pitch-green" />
@@ -81,7 +79,6 @@ export default function Footer() {
           </div>
           <div className="font-medium">© {new Date().getFullYear()} NexScore Broadcasting.</div>
         </div>
-
       </div>
     </footer>
   );

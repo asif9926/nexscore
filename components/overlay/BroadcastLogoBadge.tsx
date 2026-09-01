@@ -1,3 +1,4 @@
+// components/overlay/BroadcastLogoBadge.tsx
 "use client";
 
 import { motion } from "framer-motion";
@@ -8,46 +9,72 @@ export default function BroadcastLogoBadge() {
 
   if (loading || !matchData?.meta || matchData.meta.showLogo === false) return null;
 
-  const { customLogoUrl } = matchData.meta;
+  const { customLogoUrl, customLogoLeftUrl, sport, tournament } = matchData.meta as any;
+  const isCricket = sport === "cricket";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.85 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4 }}
-      className="fixed right-8 top-8 z-40 select-none pointer-events-none drop-shadow-[0_10px_25px_rgba(0,0,0,0.8)]"
-    >
-      {customLogoUrl ? (
-        /* ১. ইউজার কাস্টম লোগো আপলোড করলে (Full 1080p Scale) */
-        <div className="flex h-16 min-w-[120px] max-w-[220px] items-center justify-center rounded-2xl border-2 border-white/20 bg-slate-950/80 px-4 py-2 shadow-2xl backdrop-blur-md">
-          <img
-            src={customLogoUrl}
-            alt="Tournament / Sponsor Logo"
-            className="h-full w-full object-contain drop-shadow-md"
-          />
-        </div>
-      ) : (
-        /* ২. বিল্ট-ইন প্রিমিয়াম ব্রডকাস্ট নেটওয়ার্ক লোগো (Star Sports / Sky TV Standard) */
-        <div className="chyron flex h-14 items-center gap-3.5 border-2 border-amber-400 bg-gradient-to-r from-slate-950 via-[#0d1527] to-slate-950 px-5 shadow-[0_10px_35px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-          {/* Glowing Emblem Badge */}
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 font-broadcast text-xl font-black text-slate-950 shadow-md">
-            NS
-          </div>
-
-          {/* Typography Block */}
-          <div className="flex flex-col justify-center leading-tight">
-            <div className="flex items-center gap-1.5">
-              <span className="font-broadcast text-xl font-black tracking-wider text-white">
-                NEX<span className="text-amber-400">SCORE</span>
-              </span>
-              <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
+    <>
+      {/* 🔹 LEFT BUG: Tournament / Sponsor Logo (শুধুমাত্র ক্রিকেটের জন্য টপ-লেফটে থাকবে) */}
+      {isCricket && (
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.35 }}
+          className="pointer-events-none fixed left-8 top-7 z-40 select-none drop-shadow-[0_8px_20px_rgba(0,0,0,0.85)]"
+        >
+          {customLogoLeftUrl ? (
+            <div className="flex h-11 min-w-[90px] max-w-[160px] items-center justify-center rounded-xl border border-white/20 bg-slate-950/85 px-3 py-1.5 backdrop-blur-md">
+              <img
+                src={customLogoLeftUrl}
+                alt="Tournament Logo"
+                className="h-full w-full object-contain drop-shadow"
+              />
             </div>
-            <span className="font-sans text-[9px] font-black uppercase tracking-[0.25em] text-slate-400">
-              LIVE SPORTS ENGINE
-            </span>
-          </div>
-        </div>
+          ) : (
+            <div className="flex h-10 items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-950/85 px-3 backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-broadcast text-[11px] font-black uppercase tracking-widest text-slate-200">
+                {tournament || "LIVE CRICKET"}
+              </span>
+            </div>
+          )}
+        </motion.div>
       )}
-    </motion.div>
+
+      {/* 🔹 RIGHT BUG: Official TV Channel Watermark (ক্রিকেট ও ফুটবলে টপ-রাইট ফিক্সড) */}
+      <motion.div
+        initial={{ opacity: 0, x: 15 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.35 }}
+        className="pointer-events-none fixed right-8 top-7 z-40 select-none drop-shadow-[0_8px_20px_rgba(0,0,0,0.85)]"
+      >
+        {customLogoUrl ? (
+          <div className="flex h-11 min-w-[90px] max-w-[160px] items-center justify-center rounded-xl border border-white/20 bg-slate-950/85 px-3 py-1.5 backdrop-blur-md">
+            <img
+              src={customLogoUrl}
+              alt="Channel Logo"
+              className="h-full w-full object-contain drop-shadow"
+            />
+          </div>
+        ) : (
+          <div className="chyron flex h-10 items-center gap-2 border-2 border-amber-400 bg-gradient-to-r from-slate-950 via-[#0d1527] to-slate-950 px-3.5 shadow-[0_8px_25px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-amber-400 to-orange-500 font-broadcast text-xs font-black text-slate-950 shadow">
+              NS
+            </div>
+            <div className="flex flex-col justify-center leading-none">
+              <div className="flex items-center gap-1">
+                <span className="font-broadcast text-sm font-black tracking-wider text-white">
+                  NEX<span className="text-amber-400">SCORE</span>
+                </span>
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" />
+              </div>
+              <span className="font-sans text-[7px] font-black uppercase tracking-[0.2em] text-slate-400">
+                HD LIVE
+              </span>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </>
   );
 }

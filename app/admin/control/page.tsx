@@ -1,3 +1,4 @@
+// app/admin/control/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -19,7 +20,8 @@ import {
   Gamepad2, 
   Tv2,
   ArrowLeftRight,
-  UserPlus
+  UserPlus,
+  Keyboard
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import WicketModal from "@/components/admin/WicketModal";
@@ -39,6 +41,7 @@ export default function ControlDashboard() {
 
   const [activeTab, setActiveTab] = useState<"scoring" | "broadcast">("scoring");
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [enableHotkeys, setEnableHotkeys] = useState(true);
 
   // Football Modals State
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -89,8 +92,10 @@ export default function ControlDashboard() {
   const isCricketSport = matchData?.meta?.sport === "cricket";
   const isProcessing = isCricketSport ? cricketScoring.isProcessing : footballScoring.isProcessing;
 
-  // Global Keyboard & Numpad Shortcuts Listener
+  // 🛡️ গ্লোবাল কীবোর্ড হটকি লিসেনার
   useEffect(() => {
+    if (!enableHotkeys) return;
+
     const isAnyModalOpen =
       isWicketModalOpen ||
       isExtrasModalOpen ||
@@ -150,6 +155,7 @@ export default function ControlDashboard() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
+    enableHotkeys,
     isProcessing,
     matchData?.meta?.sport,
     currentInnings?.isCompleted,
@@ -252,13 +258,14 @@ export default function ControlDashboard() {
           />
           <ExtrasModal isOpen={isExtrasModalOpen} onClose={() => setIsExtrasModalOpen(false)} onConfirm={confirmExtras} />
           <NewBowlerModal
-            isOpen={isNewBowlerModalOpen}
-            onClose={() => setIsNewBowlerModalOpen(false)}
-            onConfirm={confirmNewBowler}
-            bowlingSquad={bowlingSquad}
-            activeBowlerId={activeBowlerObj?.id}
-            isMandatory={currentInnings?.overs?.endsWith(".0") && currentInnings?.overs !== "0.0"}
-          />
+  isOpen={isNewBowlerModalOpen}
+  onClose={() => setIsNewBowlerModalOpen(false)}
+  onConfirm={confirmNewBowler}
+  onUndo={undoLastAction}
+  bowlingSquad={bowlingSquad}
+  activeBowlerId={activeBowlerObj?.id}
+  isMandatory={false} // হার্ড ব্লকিং বন্ধ রাখা হলো
+/>
           <InningsBreakModal
             isOpen={isInningsBreakModalOpen}
             targetScore={(currentInnings?.score || 0) + 1}
@@ -359,7 +366,7 @@ export default function ControlDashboard() {
           </div>
         </div>
 
-        {/* Striker / Non-Striker Row with Strike Swap */}
+        {/* Striker / Non-Striker Row */}
         {meta.sport === "cricket" && (strikerBatsman || nonStrikerBatsman) && (
           <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border bg-ink/60 p-2 text-xs">
             <div className="truncate flex-1">
@@ -371,7 +378,7 @@ export default function ControlDashboard() {
             <button
               onClick={handleSwapStrike}
               disabled={isProcessing || activeBatsmen.length < 2}
-              title="Swap Strike (ম্যানুয়ালি স্ট্রাইক অদলবদল)"
+              title="Swap Strike"
               className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-panel px-2.5 py-1 text-[11px] font-bold text-signal-gold transition-all hover:bg-panel-raised active:scale-95 disabled:opacity-40"
             >
               <ArrowLeftRight size={12} />
@@ -395,48 +402,55 @@ export default function ControlDashboard() {
         )}
       </div>
 
-      {/* ================= SEGMENTED TAB SWITCHER ================= */}
-      <div className="flex items-center gap-2 rounded-2xl border border-border bg-panel p-1.5 shadow-sm">
+      {/* ================= COMPACT SEGMENTED TAB SWITCHER WITH EMBEDDED HOTKEY PILL ================= */}
+      <div className="flex items-center gap-1.5 rounded-2xl border border-border bg-panel p-1.5 shadow-sm">
         <button
           onClick={() => setActiveTab("scoring")}
-          className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+          className={`flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
             activeTab === "scoring"
               ? "bg-electric text-white shadow-md shadow-electric/25"
               : "text-fg-muted hover:text-fg hover:bg-panel-raised"
           }`}
         >
-          <Gamepad2 size={16} />
+          <Gamepad2 size={15} />
           <span>Scorer Console</span>
-          {meta.sport === "cricket" && (
-            <span className={`hidden sm:inline rounded px-1.5 py-0.5 text-[9px] font-mono ${
-              activeTab === "scoring" ? "bg-white/20 text-white" : "bg-ink text-fg-faint"
-            }`}>
-              Hotkeys Active
-            </span>
-          )}
         </button>
 
         <button
           onClick={() => setActiveTab("broadcast")}
-          className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+          className={`flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
             activeTab === "broadcast"
               ? "bg-signal-gold text-ink shadow-md shadow-signal-gold/25"
               : "text-fg-muted hover:text-fg hover:bg-panel-raised"
           }`}
         >
-          <Tv2 size={16} />
+          <Tv2 size={15} />
           <span>Broadcast &amp; OBS</span>
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
-            activeTab === "broadcast" ? "bg-ink text-signal-gold" : "border border-signal-gold/30 text-signal-gold"
-          }`}>
+          <span className="rounded bg-ink px-1.5 py-0.5 text-[9px] font-black uppercase text-signal-gold">
             PCR
           </span>
         </button>
+
+        {/* ⌨️ Ultra-Compact Hotkey Toggle Button */}
+        {meta.sport === "cricket" && (
+          <button
+            type="button"
+            onClick={() => setEnableHotkeys(!enableHotkeys)}
+            title={enableHotkeys ? "Hotkeys Active (0-6, W, E)" : "Hotkeys Disabled"}
+            className={`flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-bold transition-all active:scale-95 ${
+              enableHotkeys
+                ? "border-pitch-green/40 bg-pitch-green/15 text-pitch-green"
+                : "border-border bg-ink text-fg-faint hover:text-fg-muted"
+            }`}
+          >
+            <Keyboard size={13} />
+            <span className="hidden sm:inline">{enableHotkeys ? "Keys ON" : "Keys OFF"}</span>
+          </button>
+        )}
       </div>
 
       {/* ================= TAB CONTENT ================= */}
       <AnimatePresence mode="wait">
-        {/* TAB 1: SCORER CONSOLE */}
         {activeTab === "scoring" && (
           <motion.div
             key="tab-scoring"
@@ -450,9 +464,11 @@ export default function ControlDashboard() {
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-bold uppercase tracking-wider text-fg">Fast Actions</h3>
-                  <span className="hidden rounded border border-border/80 bg-ink px-1.5 py-0.5 text-[10px] font-medium text-fg-faint sm:inline">
-                    Numpad [0-6]
-                  </span>
+                  {enableHotkeys && (
+                    <span className="hidden rounded border border-border/80 bg-ink px-1.5 py-0.5 text-[10px] font-medium text-fg-faint sm:inline">
+                      Numpad [0-6]
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={undoLastAction}
@@ -474,9 +490,11 @@ export default function ControlDashboard() {
                         className="relative min-h-[52px] rounded-xl border border-border bg-ink font-score text-2xl text-fg transition-all active:scale-90 active:bg-electric/20 disabled:opacity-50 hover:border-electric/40"
                       >
                         {run}
-                        <span className="absolute bottom-1 right-1.5 hidden font-sans text-[9px] font-bold text-fg-faint sm:inline">
-                          [{run}]
-                        </span>
+                        {enableHotkeys && (
+                          <span className="absolute bottom-1 right-1.5 hidden font-sans text-[9px] font-bold text-fg-faint sm:inline">
+                            [{run}]
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -487,7 +505,7 @@ export default function ControlDashboard() {
                       className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-crimson/40 bg-crimson/15 text-sm font-bold text-crimson transition-all active:scale-95 disabled:opacity-50"
                     >
                       <span>WICKET (OUT)</span>
-                      <kbd className="hidden rounded bg-crimson/20 px-1.5 py-0.5 text-[10px] font-mono sm:inline">[W]</kbd>
+                      {enableHotkeys && <kbd className="hidden rounded bg-crimson/20 px-1.5 py-0.5 text-[10px] font-mono sm:inline">[W]</kbd>}
                     </button>
                     <button
                       onClick={() => setIsExtrasModalOpen(true)}
@@ -495,7 +513,7 @@ export default function ControlDashboard() {
                       className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-electric/40 bg-electric/15 text-sm font-bold text-electric transition-all active:scale-95 disabled:opacity-50"
                     >
                       <span>EXTRAS</span>
-                      <kbd className="hidden rounded bg-electric/20 px-1.5 py-0.5 text-[10px] font-mono sm:inline">[E]</kbd>
+                      {enableHotkeys && <kbd className="hidden rounded bg-electric/20 px-1.5 py-0.5 text-[10px] font-mono sm:inline">[E]</kbd>}
                     </button>
                   </div>
                 </>
@@ -518,7 +536,6 @@ export default function ControlDashboard() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {/* Team A Actions */}
                     <div className="space-y-2.5 rounded-xl border border-border bg-ink/40 p-3.5">
                       <div className="text-center text-xs font-bold uppercase tracking-wider text-electric">{meta.teamA}</div>
                       <button
@@ -546,7 +563,6 @@ export default function ControlDashboard() {
                       </div>
                     </div>
 
-                    {/* Team B Actions */}
                     <div className="space-y-2.5 rounded-xl border border-border bg-ink/40 p-3.5">
                       <div className="text-center text-xs font-bold uppercase tracking-wider text-pitch-green">{meta.teamB}</div>
                       <button
@@ -578,7 +594,7 @@ export default function ControlDashboard() {
               )}
             </div>
 
-            {/* Active Bowler Card with Quick Change Button */}
+            {/* Active Bowler Card */}
             {meta.sport === "cricket" ? (
               <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
                 <div className="mb-2 flex items-center justify-between">
@@ -654,7 +670,7 @@ export default function ControlDashboard() {
               )
             )}
 
-            {/* END MATCH & ARCHIVE BUTTON INSIDE SCORER CONSOLE */}
+            {/* END MATCH BUTTON */}
             <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg">
               <button
                 onClick={handleFinalizeMatch}
@@ -684,6 +700,7 @@ export default function ControlDashboard() {
               activeGraphic={meta.activeGraphic || "LOWER_THIRD"}
               activeTheme={meta.activeTheme}
               customLogoUrl={meta.customLogoUrl}
+              customLogoLeftUrl={(meta as any).customLogoLeftUrl}
             />
 
             <OverlayLinksCard sport={meta.sport} theme={meta.activeTheme} />

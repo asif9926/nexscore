@@ -1,3 +1,4 @@
+// components/public-view/LiveMatchCenter.tsx
 "use client";
 
 import { useState } from "react";
@@ -64,9 +65,16 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
   const battingTeamName = currentInnings?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
   const tossWinnerName = cricket?.toss.winner === "teamA" ? meta.teamA : cricket?.toss.winner === "teamB" ? meta.teamB : null;
 
+  // 🎯 ডাইনামিক স্কোয়াড অল-আউট ক্যালকুলেশন
+  const inn1 = cricket?.innings1;
+  const inn2 = cricket?.innings2;
+  const chasingSquadKey: "teamA" | "teamB" = 
+  (inn2?.battingTeam as "teamA" | "teamB") || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
+  const squadLength = cricket?.squads?.[chasingSquadKey]?.length || 11;
+  const maxWickets = Math.max(1, squadLength - 1);
+
   return (
     <div className="relative w-full min-w-0 space-y-6 text-fg">
-      
       {/* Header */}
       <div className="relative min-w-0 w-full overflow-hidden rounded-2xl border border-border bg-panel p-4 shadow-2xl sm:p-7">
         <div className="pointer-events-none absolute right-0 top-0 hidden h-72 w-72 rounded-full bg-electric/10 blur-3xl sm:block" />
@@ -86,7 +94,7 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
 
             <MetaLine tournament={meta.tournament} venue={meta.venue} />
 
-            {/* Sport-specific context line */}
+            {/* Sport-specific context */}
             {isCricket ? (
               <div className="flex flex-col items-center gap-1.5 pt-0.5 md:items-start">
                 {tossWinnerName && cricket?.toss.decision && (
@@ -124,7 +132,7 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
             )}
           </div>
 
-          {/* Score chip & Completed Match Summary */}
+          {/* Score chip */}
           <div
             className={`w-full shrink-0 rounded-2xl border ${
               isCricket ? "border-electric/30" : "border-pitch-green/30"
@@ -132,48 +140,44 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
           >
             {isCricket ? (
               isCompleted ? (
-                /* ম্যাচ শেষ হলে ২ দলের পূর্ণাঙ্গ স্কোর ও গোল্ডেন রেজাল্ট চিপ */
                 <div className="space-y-2.5">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-3 text-xs sm:text-sm font-bold">
                       <span className="truncate text-fg-muted">
-                        {cricket?.innings1?.battingTeam === "teamA" ? meta.teamA : meta.teamB}:
+                        {inn1?.battingTeam === "teamA" ? meta.teamA : meta.teamB}:
                       </span>
                       <span className="font-score text-lg sm:text-xl text-electric shrink-0">
-                        {cricket?.innings1?.score || 0}/{cricket?.innings1?.wickets || 0}{" "}
+                        {inn1?.score || 0}/{inn1?.wickets || 0}{" "}
                         <span className="font-sans text-[11px] text-fg-faint font-normal">
-                          ({cricket?.innings1?.overs || "0.0"} ov)
+                          ({inn1?.overs || "0.0"} ov)
                         </span>
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between gap-3 text-xs sm:text-sm font-bold">
                       <span className="truncate text-fg-muted">
-                        {cricket?.innings1?.battingTeam === "teamA" ? meta.teamB : meta.teamA}:
+                        {inn1?.battingTeam === "teamA" ? meta.teamB : meta.teamA}:
                       </span>
                       <span className="font-score text-lg sm:text-xl text-signal-gold shrink-0">
-                        {cricket?.innings2 ? `${cricket.innings2.score}/${cricket.innings2.wickets}` : "DNB"}{" "}
+                        {inn2 ? `${inn2.score}/${inn2.wickets}` : "DNB"}{" "}
                         <span className="font-sans text-[11px] text-fg-faint font-normal">
-                          ({cricket?.innings2?.overs || "0.0"} ov)
+                          ({inn2?.overs || "0.0"} ov)
                         </span>
                       </span>
                     </div>
                   </div>
 
-                  {/* Winner / Verdict Badge */}
                   <div className="flex items-center justify-center gap-1.5 rounded-xl border border-signal-gold/40 bg-signal-gold/15 px-3 py-1.5 text-center text-xs font-bold text-signal-gold">
                     <Trophy size={13} className="shrink-0 text-signal-gold" />
                     <span className="truncate">
                       {(() => {
-                        const inn1 = cricket?.innings1;
-                        const inn2 = cricket?.innings2;
                         const inn1Team = inn1?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
                         const inn2Team = inn1?.battingTeam === "teamA" ? meta.teamB : meta.teamA;
                         const targetScore = (inn1?.score || 0) + 1;
 
                         if (inn2) {
                           if (inn2.score >= targetScore) {
-                            return `${inn2Team} won by ${10 - (inn2.wickets || 0)} wkts`;
+                            return `${inn2Team} won by ${Math.max(0, maxWickets - (inn2.wickets || 0))} wkts`;
                           }
                           const diff = (inn1?.score || 0) - inn2.score;
                           return diff > 0 ? `${inn1Team} won by ${diff} runs` : "Match Tied";
@@ -184,7 +188,6 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
                   </div>
                 </div>
               ) : (
-                /* লাইভ চলাকালীন সিঙ্গেল স্কোর ভিউ */
                 <div className="flex flex-col items-center md:items-end">
                   <div className="font-score text-4xl leading-none text-fg sm:text-5xl">
                     {currentInnings?.score ?? 0}
@@ -197,7 +200,6 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
                 </div>
               )
             ) : (
-              /* ফুটবল স্কোর ভিউ */
               <div className="flex flex-col items-center md:items-end">
                 <div className="font-score text-4xl leading-none text-fg sm:text-5xl">
                   {football?.scoreA ?? 0} <span className="mx-1 text-2xl text-fg-faint">-</span> {football?.scoreB ?? 0}
@@ -234,20 +236,12 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
 
       <div className="min-h-[400px] min-w-0">
         <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            {activeTab === "live" && <LiveTab matchData={matchData} />}
-            {activeTab === "scorecard" && <ScorecardTab matchData={matchData} />}
-            {activeTab === "commentary" && <CommentaryTab matchData={matchData} />}
-            {activeTab === "squads" && <SquadsTab matchData={matchData} />}
-            {activeTab === "graphs" && <GraphsTab matchData={matchData} />}
-            {activeTab === "info" && <InfoTab matchData={matchData} />}
-          </motion.div>
+          {activeTab === "live" && <LiveTab key="tab-live" matchData={matchData} />}
+          {activeTab === "scorecard" && <ScorecardTab key="tab-scorecard" matchData={matchData} />}
+          {activeTab === "commentary" && <CommentaryTab key="tab-commentary" matchData={matchData} />}
+          {activeTab === "squads" && <SquadsTab key="tab-squads" matchData={matchData} />}
+          {activeTab === "graphs" && <GraphsTab key="tab-graphs" matchData={matchData} />}
+          {activeTab === "info" && <InfoTab key="tab-info" matchData={matchData} />}
         </AnimatePresence>
       </div>
     </div>

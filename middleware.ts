@@ -1,66 +1,54 @@
 // middleware.ts
-import { NextRequest, NextResponse } from "next/server";
-import { authMiddleware, redirectToLogin } from "next-firebase-auth-edge";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-// যে পেজগুলো পাবলিক দর্শকরা দেখবে
-const PUBLIC_PATHS = ['/', '/live', '/match-history'];
+export function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+  const token = request.cookies.get("AuthToken")?.value;
 
-export async function middleware(request: NextRequest) {
-  return authMiddleware(request, {
-    loginPath: "/api/login",
-    logoutPath: "/api/logout",
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
-    cookieName: "AuthToken",
-    cookieSignatureKeys: [process.env.COOKIE_SECRET_CURRENT!],
-    cookieSerializeOptions: {
-      path: "/",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // প্রোডাকশনে secure হবে
-      sameSite: "lax" as const,
-      maxAge: 12 * 60 * 60 * 24, // ১২ দিন সেশন থাকবে
-    },
-    serviceAccount: {
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
-      // env ফাইল থেকে \n গুলো ঠিকমতো পার্স করার জন্য
-      privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : '',
-    },
-    handleValidToken: async ({ token, decodedToken }, headers) => {
-      // টোকেন ভ্যালিড হলে এডমিন রাউটে ঢুকতে দেবে
-      return NextResponse.next({
-        request: { headers }
-      });
-    },
-    handleInvalidToken: async (reason) => {
-      // যদি ইউজার /admin-এর কোনো রাউটে (লগইন ছাড়া) ঢুকতে চায়, তাকে লগইনে পাঠিয়ে দেবে
-      if (request.nextUrl.pathname.startsWith('/admin') && request.nextUrl.pathname !== '/admin/login') {
-        return redirectToLogin(request, {
-          path: '/admin/login',
-          publicPaths: PUBLIC_PATHS
-        });
-      }
-      return NextResponse.next();
-    },
-    handleError: async (error) => {
-      console.error('Unhandled authentication error', { error });
-      if (request.nextUrl.pathname.startsWith('/admin') && request.nextUrl.pathname !== '/admin/login') {
-        return redirectToLogin(request, {
-          path: '/admin/login',
-          publicPaths: PUBLIC_PATHS
-        });
-      }
-      return NextResponse.next();
+  const isLoginPage = pathname === "/admin/login";
+  const isAdminRoute = pathname.startsWith("/admin");
+  const isProtectedApiRoute = pathname.startsWith("/api/match/finalize");
+
+  // ১. সংরক্ষিত API রুটের জন্য অথেন্টিকেশন চেক
+  if (isProtectedApiRoute) {
+    const authHeader = request.headers.get("authorization");
+    if (!token && !authHeader) {
+      return NextResponse.json(
+        { error: "Unauthorized: Admin session missing or expired." },
+        { status: 401 }
+      );
     }
-  });
+    return NextResponse.next();
+  }
+
+  // ২. অ্যাডমিন ওয়েব রুট গার্ড (/admin/*)
+  if (isAdminRoute) {
+    // লগইন করা না থাকলে এবং ইউজার লগইন পেজে না থাকলে
+    if (!token && !isLoginPage) {
+      const loginUrl = new URL("/admin/login", request.url);
+      // লগইনের পর যাতে সরাসরি কাঙ্ক্ষিত পেজে (যেমন: /admin/control) ফিরে যেতে পারে
+      if (pathname !== "/admin") {
+        loginUrl.searchParams.set("callbackUrl", `${pathname}${search}`);
+      }
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // অলরেডি লগইন থাকা অবস্থায় লগইন পেজে ঢুকলে ড্যাশবোর্ডে রিডাইরেক্ট করবে
+    if (token && isLoginPage) {
+      const callbackUrl = request.nextUrl.searchParams.get("callbackUrl");
+      const targetUrl = callbackUrl && callbackUrl.startsWith("/admin") ? callbackUrl : "/admin";
+      return NextResponse.redirect(new URL(targetUrl, request.url));
+    }
+  }
+
+  return NextResponse.next();
 }
 
-// Next.js-কে বলে দেওয়া কোন কোন রাউটে এই মিডলওয়্যার রান করবে
+// যে যে রুটে মিডলওয়্যার সক্রিয় থাকবে
 export const config = {
   matcher: [
-    "/api/login",
-    "/api/logout",
-    "/",
-    "/((?!_next|favicon.ico|api/scorecard|.*\\.).*)",
-    "/admin/(.*)",
+    "/admin/:path*",
+    "/api/match/finalize",
   ],
 };

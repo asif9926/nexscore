@@ -1,9 +1,9 @@
+// app/admin/login/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
-import { useRouter } from "next/navigation";
 import { Lock, Mail, Eye, EyeOff, MessageCircle, ShieldAlert, Sparkles, Loader2 } from "lucide-react";
 import Navbar from "@/components/common/Navbar";
 import Footer from "@/components/common/Footer";
@@ -15,19 +15,42 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const router = useRouter();
 
-  // অলরেডি লগইন থাকলে সরাসরি অ্যাডমিন প্যানেলে নিয়ে যাবে
+  // 🛡️ INFINITE LOOP BREAKER & AUTO-SYNC GUARD
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        router.replace("/admin");
-      } else {
-        setCheckingAuth(false);
+        try {
+          // ১. প্রথমে ব্যাকএন্ডে সেশন কুকি সিঙ্ক করা
+          const idToken = await user.getIdToken();
+          const res = await fetch("/api/login", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ idToken }),
+          });
+
+          const data = await res.json().catch(() => null);
+
+          // ২. কুকি সফলভাবে নিশ্চিত হলেই কেবল অ্যাডমিনে পাঠাবে
+          if (res.ok && data?.success) {
+            window.location.href = "/admin";
+            return;
+          }
+        } catch (e) {
+          console.error("Session auto-sync error:", e);
+        }
+
+        // ৩. কুকি সিঙ্ক ব্যর্থ হলে ক্লায়েন্ট সাইন-আউট করে লুপ ব্রেক করবে
+        await signOut(auth);
       }
+      setCheckingAuth(false);
     });
+
     return () => unsubscribe();
-  }, [router]);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,14 +73,15 @@ export default function LoginPage() {
       const data = await res.json().catch(() => null);
 
       if (res.ok && data?.success) {
-        router.push("/admin");
-        router.refresh();
+        window.location.href = "/admin";
       } else {
         setError(data?.error || "Failed to secure session. Please try again.");
+        await signOut(auth);
+        setLoading(false);
       }
-    } catch {
+    } catch (err: any) {
+      console.error("Login error:", err);
       setError("Invalid email address or password.");
-    } finally {
       setLoading(false);
     }
   };
@@ -89,7 +113,7 @@ export default function LoginPage() {
               </div>
               <h1 className="text-2xl font-black uppercase tracking-wide text-fg">Admin Access</h1>
               <p className="mt-1 text-xs text-fg-muted sm:text-sm">
-                NexScore Match Control Room & Broadcast PCR
+                NexScore Match Control Room &amp; Broadcast PCR
               </p>
             </div>
 

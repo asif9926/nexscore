@@ -1,3 +1,4 @@
+// components/overlay/cricket/BroadcastEngine.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,32 +39,38 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
   const battingCode = getShortName(battingTeamName, "BAT");
   const bowlingCode = getShortName(bowlingTeamName, "BWL");
 
-  // ১ম ও ২য় ইনিংসের টিম নাম ও ডেটা
   const inn1 = cricket?.innings1;
   const inn2 = cricket?.innings2;
   const inn1BattingTeam = inn1?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
   const inn1BowlingTeam = inn1?.battingTeam === "teamA" ? meta.teamB : meta.teamA;
 
-  // ১ম ইনিংসের ডায়নামিক CRR ক্যালকুলেশন
   const [inn1Overs, inn1Balls] = (inn1?.overs || "0.0").split(".").map(Number);
   const totalBallsInn1 = (inn1Overs || 0) * 6 + (inn1Balls || 0);
   const inn1CRR = totalBallsInn1 > 0 ? (((inn1?.score || 0) / totalBallsInn1) * 6).toFixed(2) : "0.00";
 
-  // ২য় ইনিংসে Required Run Rate
   const maxOvers = cricket?.maxOvers || 20;
   const targetScore = (inn1?.score || 0) + 1;
-  const rrr = ((targetScore / maxOvers)).toFixed(2);
+  const rrr = (targetScore / maxOvers).toFixed(2);
 
-  // রেজাল্ট স্টেটমেন্ট জেনারেশন
+  // 🎯 ডায়নামিক অল-আউট ক্যালকুলেশন (৬/৮/১১ যে সাইজের দলই হোক)
+  const chasingSquadKey: "teamA" | "teamB" = 
+  (inn2?.battingTeam as "teamA" | "teamB") || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
+  const squadLength = cricket?.squads?.[chasingSquadKey]?.length || 11;
+  const maxWickets = Math.max(1, squadLength - 1);
+
   const getMatchResultText = () => {
     if (!inn1 || !inn2) return "MATCH COMPLETED";
-    
+
     if (inn2.score >= targetScore) {
-      const wicketsLeft = 10 - inn2.wickets;
+      const wicketsLeft = Math.max(0, maxWickets - inn2.wickets);
       return `${inn1BowlingTeam.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
     }
-    
-    if (inn2.isCompleted || (inn2.overs.endsWith(".0") && Number(inn2.overs.split(".")[0]) >= maxOvers) || inn2.wickets >= 10) {
+
+    if (
+      inn2.isCompleted ||
+      (inn2.overs.endsWith(".0") && Number(inn2.overs.split(".")[0]) >= maxOvers) ||
+      inn2.wickets >= maxWickets
+    ) {
       const runMargin = inn1.score - inn2.score;
       if (runMargin > 0) {
         return `${inn1BattingTeam.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
@@ -119,7 +126,6 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
   return (
     <div className="pointer-events-none fixed inset-0 z-30 font-sans select-none">
       <AnimatePresence mode="wait">
-        
         {/* ================= ১. INNINGS BREAK POSTER ================= */}
         {activeGraphic === "INNINGS_BREAK" && (
           <motion.div
@@ -133,7 +139,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
               <div className="mb-2 inline-block rounded-full bg-amber-400/20 px-4 py-0.5 font-broadcast text-[11px] font-black uppercase tracking-widest text-amber-400">
                 INNINGS BREAK
               </div>
-              
+
               <h2 className="mb-4 text-xl font-black text-white sm:text-2xl">
                 {meta.teamA} <span className="text-amber-400">VS</span> {meta.teamB}
               </h2>
@@ -142,7 +148,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
                 <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
                   {inn1BattingTeam} (1st Innings Total)
                 </div>
-                
+
                 <div className="my-1 font-score text-5xl font-black text-white">
                   {inn1?.score || 0} <span className="text-2xl text-slate-500">/</span> {inn1?.wickets || 0}
                 </div>
@@ -152,9 +158,12 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
                   <span className="text-slate-600">•</span>
                   <span>CRR: <strong className="text-emerald-400">{inn1CRR}</strong></span>
                   <span className="text-slate-600">•</span>
-                  <span>Extras: <strong className="text-amber-400">
-                    {(inn1?.extras?.wide || 0) + (inn1?.extras?.noBall || 0) + (inn1?.extras?.bye || 0) + (inn1?.extras?.legBye || 0)}
-                  </strong></span>
+                  <span>
+                    Extras:{" "}
+                    <strong className="text-amber-400">
+                      {(inn1?.extras?.wide || 0) + (inn1?.extras?.noBall || 0) + (inn1?.extras?.bye || 0) + (inn1?.extras?.legBye || 0)}
+                    </strong>
+                  </span>
                 </div>
               </div>
 
@@ -220,7 +229,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
           </motion.div>
         )}
 
-        {/* ================= ৩. স্পটলাইট পপআপ (Batter, Bowler, Partnership, Summary) ================= */}
+        {/* ================= ৩. স্পটলাইট পপআপস ================= */}
         {activeGraphic === "BATSMAN_CARD" && striker && (
           <motion.div
             key="batsman-card"
@@ -272,13 +281,16 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
                 </div>
                 <div className="border-l border-slate-800 pl-4 text-xs font-semibold text-slate-300">
                   <div>Overs: <span className="font-bold text-white">{activeBowler.overs}</span> • Maidens: <span className="font-bold text-white">{activeBowler.maidens}</span></div>
-                  <div>Econ: <span className="font-bold text-amber-400">
-                    {(() => {
-                      const [bO, bB] = (activeBowler.overs || "0.0").split(".").map(Number);
-                      const bTotal = (bO || 0) + (bB || 0) / 6;
-                      return bTotal > 0 ? (activeBowler.runs / bTotal).toFixed(2) : "0.00";
-                    })()}
-                  </span></div>
+                  <div>
+                    Econ:{" "}
+                    <span className="font-bold text-amber-400">
+                      {(() => {
+                        const [bO, bB] = (activeBowler.overs || "0.0").split(".").map(Number);
+                        const bTotal = (bO || 0) + (bB || 0) / 6;
+                        return bTotal > 0 ? (activeBowler.runs / bTotal).toFixed(2) : "0.00";
+                      })()}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -346,7 +358,7 @@ export default function BroadcastEngine({ theme = "sky" }: Props) {
           </motion.div>
         )}
 
-        {/* ================= ৪. স্লিম LOWER_THIRD ৬টি থিম ================= */}
+        {/* ================= ৪. LOWER THIRD THEMES ================= */}
         {activeGraphic === "LOWER_THIRD" && (
           <>
             {/* THEME 1: SONY / SKY / PCB PRO */}

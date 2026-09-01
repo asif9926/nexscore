@@ -1,3 +1,4 @@
+// app/api/scorecard/[archiveId]/image/route.ts
 import { ImageResponse } from "@vercel/og";
 import { adminFirestore } from "@/lib/firebase/admin";
 import { NextRequest } from "next/server";
@@ -45,12 +46,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
       inn2Overs = inn2?.overs || "0.0";
 
       const targetScore = (inn1?.score || 0) + 1;
+      const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
+      const squadCount = cricketSnap.squads?.[chasingSquadKey]?.length || 11;
+      const maxWickets = Math.max(1, squadCount - 1);
 
       if (inn2) {
         if (inn2.score >= targetScore) {
-          const wicketsLeft = 10 - (inn2.wickets || 0);
+          const wicketsLeft = Math.max(0, maxWickets - (inn2.wickets || 0));
           resultText = `🏆 ${inn2Team.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
-        } else if (inn2.isCompleted || (inn2.overs?.endsWith(".0") && Number(inn2.overs.split(".")[0]) >= maxOvers) || inn2.wickets >= 10) {
+        } else if (inn2.isCompleted || (inn2.overs?.endsWith(".0") && Number(inn2.overs.split(".")[0]) >= maxOvers) || inn2.wickets >= maxWickets) {
           const runMargin = (inn1?.score || 0) - inn2.score;
           if (runMargin > 0) {
             resultText = `🏆 ${inn1Team.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
@@ -88,7 +92,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
           },
         },
         [
-          // 1. Top Header: Tournament info & Branding
+          // Top Header
           React.createElement(
             "div",
             { key: "header", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
@@ -110,7 +114,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
             ]
           ),
 
-          // 2. Middle Match Summary Cards
+          // Scoreboard Card
           React.createElement(
             "div",
             {
@@ -127,7 +131,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
             },
             isCricket
               ? [
-                  // Team 1
                   React.createElement(
                     "div",
                     { key: "t1", style: { display: "flex", flexDirection: "column", width: "42%" } },
@@ -137,7 +140,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
                       React.createElement("span", { key: "t1o", style: { color: "#8A92A6", fontSize: "20px", fontWeight: "700", marginTop: "8px" } }, `(${inn1Overs} Ov)`),
                     ]
                   ),
-                  // VS Badge
                   React.createElement(
                     "div",
                     {
@@ -158,7 +160,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
                     },
                     "VS"
                   ),
-                  // Team 2
                   React.createElement(
                     "div",
                     { key: "t2", style: { display: "flex", flexDirection: "column", alignItems: "flex-end", width: "42%" } },
@@ -170,7 +171,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
                   ),
                 ]
               : [
-                  // Football Team A
                   React.createElement(
                     "div",
                     { key: "fa", style: { display: "flex", flexDirection: "column", alignItems: "center", width: "35%" } },
@@ -178,13 +178,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
                       React.createElement("span", { key: "fan", style: { color: "#EAEDF5", fontSize: "36px", fontWeight: "900" } }, teamA),
                     ]
                   ),
-                  // Football Score
                   React.createElement(
                     "div",
                     { key: "fscore", style: { display: "flex", alignItems: "baseline", color: "#17C980", fontSize: "80px", fontWeight: "900" } },
                     `${footballScoreA} - ${footballScoreB}`
                   ),
-                  // Football Team B
                   React.createElement(
                     "div",
                     { key: "fb", style: { display: "flex", flexDirection: "column", alignItems: "center", width: "35%" } },
@@ -195,7 +193,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
                 ]
           ),
 
-          // 3. Bottom Golden Result Banner
+          // Result Banner
           React.createElement(
             "div",
             {

@@ -1,3 +1,4 @@
+// components/admin/BroadcastControls.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -27,6 +28,7 @@ interface Props {
   activeGraphic?: BroadcastGraphicType;
   activeTheme?: string;
   customLogoUrl?: string | null;
+  customLogoLeftUrl?: string | null;
 }
 
 const CRICKET_THEMES = [
@@ -53,22 +55,22 @@ export default function BroadcastControls({
   activeGraphic = "LOWER_THIRD",
   activeTheme,
   customLogoUrl,
+  customLogoLeftUrl,
 }: Props) {
   const { showToast } = useToast();
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingSide, setUploadingSide] = useState<"left" | "right" | null>(null);
   const autoRevertTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const isCricket = sport === "cricket";
   const currentTheme = activeTheme || (sport === "football" ? "premier" : "sky");
   const themesList = sport === "football" ? FOOTBALL_THEMES : CRICKET_THEMES;
 
-  // কম্পোনেন্ট আনমাউন্ট হলে টাইমার স্বয়ংক্রিয় ক্লিনআপ
   useEffect(() => {
     return () => {
       if (autoRevertTimerRef.current) clearTimeout(autoRevertTimerRef.current);
     };
   }, []);
 
-  // 🛡️ রেস-কন্ডিশন মুক্ত গ্রাফিক্স টগল ইঞ্জিন
   const toggleGraphic = (graphic: BroadcastGraphicType, autoRevertMs: number = 0) => {
     if (autoRevertTimerRef.current) {
       clearTimeout(autoRevertTimerRef.current);
@@ -76,23 +78,23 @@ export default function BroadcastControls({
     }
 
     if (activeGraphic === graphic) {
-      update(ref(rtdb), { 
+      update(ref(rtdb), {
         "match/meta/activeGraphic": "LOWER_THIRD",
-        "match/meta/updatedAt": Date.now()
+        "match/meta/updatedAt": Date.now(),
       });
       return;
     }
 
-    update(ref(rtdb), { 
+    update(ref(rtdb), {
       "match/meta/activeGraphic": graphic,
-      "match/meta/updatedAt": Date.now()
+      "match/meta/updatedAt": Date.now(),
     });
 
     if (autoRevertMs > 0) {
       autoRevertTimerRef.current = setTimeout(() => {
-        update(ref(rtdb), { 
+        update(ref(rtdb), {
           "match/meta/activeGraphic": "LOWER_THIRD",
-          "match/meta/updatedAt": Date.now()
+          "match/meta/updatedAt": Date.now(),
         });
         autoRevertTimerRef.current = null;
       }, autoRevertMs);
@@ -100,59 +102,83 @@ export default function BroadcastControls({
   };
 
   const changeTheme = (themeId: string) => {
-    update(ref(rtdb), { 
+    update(ref(rtdb), {
       "match/meta/activeTheme": themeId,
-      "match/meta/updatedAt": Date.now()
+      "match/meta/updatedAt": Date.now(),
     });
   };
 
   const toggleVisibility = (field: "showScoreboard" | "showLogo", current: boolean) => {
-    update(ref(rtdb), { 
+    update(ref(rtdb), {
       [`match/meta/${field}`]: !current,
-      "match/meta/updatedAt": Date.now()
+      "match/meta/updatedAt": Date.now(),
     });
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processImageToWebP = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 220;
+          const scale = MAX_WIDTH / img.width;
+          canvas.width = MAX_WIDTH;
+          canvas.height = img.height * scale;
+
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/webp", 0.85));
+        };
+        img.onerror = reject;
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, side: "left" | "right") => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 500 * 1024) {
-      showToast("Logo size must be under 500KB", "error");
-      return;
-    }
+    try {
+      setUploadingSide(side);
+      const optimizedBase64 = await processImageToWebP(file);
+      const field = side === "left" ? "customLogoLeftUrl" : "customLogoUrl";
 
-    setIsUploading(true);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      update(ref(rtdb), { 
-        "match/meta/customLogoUrl": base64String,
-        "match/meta/updatedAt": Date.now()
+      await update(ref(rtdb), {
+        [`match/meta/${field}`]: optimizedBase64,
+        "match/meta/updatedAt": Date.now(),
       });
-      showToast("Custom logo applied to broadcast overlay!", "success");
-      setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+
+      showToast(`${side === "left" ? "Left" : "Channel"} logo updated!`, "success");
+    } catch {
+      showToast("Failed to upload logo.", "error");
+    } finally {
+      setUploadingSide(null);
+    }
   };
 
-  const removeCustomLogo = () => {
-    update(ref(rtdb), { 
-      "match/meta/customLogoUrl": null,
-      "match/meta/updatedAt": Date.now()
+  const removeCustomLogo = (side: "left" | "right") => {
+    const field = side === "left" ? "customLogoLeftUrl" : "customLogoUrl";
+    update(ref(rtdb), {
+      [`match/meta/${field}`]: null,
+      "match/meta/updatedAt": Date.now(),
     });
-    showToast("Reverted to default channel badge.", "info");
+    showToast(`${side === "left" ? "Left" : "Channel"} logo reset to default.`, "info");
   };
 
   return (
     <div className="space-y-4 rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
-      {/* Header with Responsive ON-AIR Badge */}
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div>
           <h3 className="text-xs font-bold uppercase tracking-wider text-fg sm:text-sm">
-            {sport === "cricket" ? "TV Graphics Director (PCR)" : "Broadcast Overlay Controls"}
+            {isCricket ? "TV Graphics Director (PCR)" : "Football Broadcast Controls"}
           </h3>
-          <p className="text-[11px] text-fg-muted">Real-time overlay graphics & theme controller</p>
+          <p className="text-[11px] text-fg-muted">Overlay graphics, themes &amp; channel badge</p>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-electric/30 bg-electric/10 px-2.5 py-0.5 text-[10px] font-bold text-electric sm:px-3 sm:py-1 sm:text-xs">
@@ -162,10 +188,10 @@ export default function BroadcastControls({
       </div>
 
       {/* 1. Instant Graphics Triggers */}
-      {sport === "cricket" ? (
+      {isCricket ? (
         <div>
           <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-fg-faint">
-            Instant Graphics Triggers (Click to Toggle / Auto-revert)
+            Instant Graphics Triggers (Auto-revert)
           </label>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <button
@@ -289,7 +315,7 @@ export default function BroadcastControls({
         </div>
       </div>
 
-      {/* 3. Visibility Toggles & Custom Logo Uploader */}
+      {/* 3. Visibility Toggles & Sport-Aware Logo Manager */}
       <div className="space-y-3 border-t border-border pt-3">
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <button
@@ -311,54 +337,100 @@ export default function BroadcastControls({
                 : "border-border bg-ink text-fg-faint"
             }`}
           >
-            <Award size={14} /> {showLogo ? "Channel Badge: On" : "Channel Badge: Off"}
+            <Award size={14} /> {showLogo ? "TV Logo Badge: On" : "TV Logo Badge: Off"}
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-ink/60 p-3">
-          <div className="flex items-center gap-3">
-            {customLogoUrl ? (
-              <img
-                src={customLogoUrl}
-                alt="Custom Logo"
-                className="h-9 w-9 rounded-lg border border-border bg-slate-900 object-contain p-1"
-              />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-panel text-xs font-black text-amber-400">
-                NS
+        {/* Logo Upload Box (ফুটবলের জন্য ১টি, ক্রিকেটের জন্য ২টি) */}
+        <div className={`grid grid-cols-1 gap-3 ${isCricket ? "sm:grid-cols-2" : ""}`}>
+          {/* Cricket Left Bug */}
+          {isCricket && (
+            <div className="flex items-center justify-between rounded-xl border border-border bg-ink/60 p-3">
+              <div className="flex items-center gap-3">
+                {customLogoLeftUrl ? (
+                  <img
+                    src={customLogoLeftUrl}
+                    alt="Left Bug"
+                    className="h-9 w-9 rounded-lg border border-border bg-slate-900 object-contain p-1"
+                  />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-panel text-[10px] font-black text-electric">
+                    LEFT
+                  </div>
+                )}
+                <div>
+                  <div className="text-xs font-bold text-fg">Top-Left Logo</div>
+                  <div className="text-[10px] text-fg-muted">Tournament / Sponsor Bug</div>
+                </div>
               </div>
-            )}
-            <div>
-              <div className="text-xs font-bold text-fg">
-                {customLogoUrl ? "Custom PNG Logo Active" : "Built-in Channel Badge Active"}
-              </div>
-              <div className="text-[10px] text-fg-muted">
-                {customLogoUrl ? "Custom logo rendering on stream" : "Upload tournament/sponsor PNG (Max 500KB)"}
+
+              <div className="flex items-center gap-1.5">
+                <label className="flex min-h-[34px] cursor-pointer items-center gap-1 rounded-lg border border-electric/40 bg-electric/15 px-2.5 py-1 text-xs font-bold text-electric hover:bg-electric/25">
+                  <Upload size={12} />
+                  <span>{uploadingSide === "left" ? "..." : "Upload"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleLogoUpload(e, "left")}
+                    className="hidden"
+                  />
+                </label>
+                {customLogoLeftUrl && (
+                  <button
+                    onClick={() => removeCustomLogo("left")}
+                    className="p-1 text-crimson hover:opacity-80"
+                    title="Remove Logo"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="flex items-center gap-2">
-            <label className="flex min-h-[34px] cursor-pointer items-center gap-1.5 rounded-lg border border-electric/40 bg-electric/15 px-3 py-1 text-xs font-bold text-electric hover:bg-electric/25 active:scale-95">
-              <Upload size={13} />
-              <span>{isUploading ? "Uploading..." : "Upload PNG"}</span>
-              <input
-                type="file"
-                accept="image/png, image/jpeg, image/webp"
-                onChange={handleLogoUpload}
-                className="hidden"
-              />
-            </label>
+          {/* Fixed Right Bug (Cricket & Football) */}
+          <div className="flex items-center justify-between rounded-xl border border-border bg-ink/60 p-3">
+            <div className="flex items-center gap-3">
+              {customLogoUrl ? (
+                <img
+                  src={customLogoUrl}
+                  alt="Channel Watermark"
+                  className="h-9 w-9 rounded-lg border border-border bg-slate-900 object-contain p-1"
+                />
+              ) : (
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-panel text-[10px] font-black text-amber-400">
+                  NS
+                </div>
+              )}
+              <div>
+                <div className="text-xs font-bold text-fg">
+                  {isCricket ? "Top-Right TV Watermark" : "Broadcast Watermark Logo"}
+                </div>
+                <div className="text-[10px] text-fg-muted">Official Channel Badge (Top-Right)</div>
+              </div>
+            </div>
 
-            {customLogoUrl && (
-              <button
-                onClick={removeCustomLogo}
-                className="flex min-h-[34px] items-center gap-1 rounded-lg border border-crimson/30 bg-crimson/10 px-2.5 py-1 text-xs font-bold text-crimson hover:bg-crimson/20 active:scale-95"
-                title="Reset to Default"
-              >
-                <Trash2 size={13} />
-              </button>
-            )}
+            <div className="flex items-center gap-1.5">
+              <label className="flex min-h-[34px] cursor-pointer items-center gap-1 rounded-lg border border-signal-gold/40 bg-signal-gold/15 px-2.5 py-1 text-xs font-bold text-signal-gold hover:bg-signal-gold/25">
+                <Upload size={12} />
+                <span>{uploadingSide === "right" ? "..." : "Upload"}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleLogoUpload(e, "right")}
+                  className="hidden"
+                />
+              </label>
+              {customLogoUrl && (
+                <button
+                  onClick={() => removeCustomLogo("right")}
+                  className="p-1 text-crimson hover:opacity-80"
+                  title="Remove Logo"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
