@@ -218,13 +218,13 @@ export default function PreMatchWizard() {
 
     const rolesList = isCricket ? defaultCricketRoles : defaultFootballRoles;
     
-    const teamLabel = team === "A" 
-      ? (setupData.teamA.trim() || "Team A") 
-      : (setupData.teamB.trim() || "Team B");
+    // পুরো নামের বদলে ৩-৪ অক্ষরের ক্যাপিটাল শর্ট কোড নেওয়া (যেমন: DHK, CTG)
+    const rawName = team === "A" ? setupData.teamA.trim() : setupData.teamB.trim();
+    const shortCode = rawName.length > 0 ? rawName.slice(0, 4).toUpperCase() : (team === "A" ? "TMA" : "TMB");
 
     const genericSquad: Player[] = Array.from({ length: 11 }, (_, i) => ({
       id: `p_${team.toLowerCase()}_${Date.now()}_${i + 1}`,
-      name: `${teamLabel} - P${i + 1}`,
+      name: `${shortCode} P${i + 1}`, // 👈 "Dhaka Titans - P1"-এর বদলে তৈরি হবে "DHK P1"
       role: (rolesList[i] || (isCricket ? "Batsman" : "Forward")) as any,
       isCaptain: i === 0,
       isWicketKeeper: isCricket && i === 2,
@@ -232,10 +232,10 @@ export default function PreMatchWizard() {
 
     if (team === "A") {
       setSetupData((prev) => ({ ...prev, squadA: genericSquad }));
-      showToast(`${teamLabel} squad auto-filled!`, "info");
+      showToast(`${shortCode} squad auto-filled!`, "info");
     } else {
       setSetupData((prev) => ({ ...prev, squadB: genericSquad }));
-      showToast(`${teamLabel} squad auto-filled!`, "info");
+      showToast(`${shortCode} squad auto-filled!`, "info");
     }
   };
 

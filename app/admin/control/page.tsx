@@ -41,7 +41,7 @@ export default function ControlDashboard() {
 
   const [activeTab, setActiveTab] = useState<"scoring" | "broadcast">("scoring");
   const [isFinalizing, setIsFinalizing] = useState(false);
-  const [enableHotkeys, setEnableHotkeys] = useState(true);
+  const [enableHotkeys, setEnableHotkeys] = useState(false);
 
   // Football Modals State
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
