@@ -52,7 +52,7 @@ export default function Footer() {
                 <Code2 size={14} className="text-electric" />
                 <span>Engineered &amp; Maintained by</span>
                 <span className="font-bold text-fg underline decoration-border underline-offset-2 group-hover:text-electric">
-                  Tahmid
+                  Asif
                 </span>
                 <ArrowUpRight size={13} className="opacity-70 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </Link>

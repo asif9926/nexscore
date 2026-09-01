@@ -1,27 +1,35 @@
+// app/admin/actions.ts
 "use server";
 
 import { adminFirestore, adminAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-// ১. ফায়ারবেস থেকে সব ম্যাচ হিস্ট্রি নিয়ে আসার ফাংশন
+// ১. ফায়ারবেস থেকে লাইটওয়েট ম্যাচ হিস্ট্রি নিয়ে আসার অ্যাকশন
 export async function getMatchHistory(): Promise<{ success: boolean; matches: any[]; error?: string }> {
   try {
-    const snapshot = await adminFirestore.collection("matches_history").get();
+    const snapshot = await adminFirestore
+      .collection("matches_history")
+      .orderBy("completedAt", "desc")
+      .limit(50)
+      .get();
 
     if (snapshot.empty) {
       return { success: true, matches: [] };
     }
 
-    const matches = snapshot.docs.map((doc: any) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    matches.sort((a: any, b: any) => {
-      const timeA = a.completedAt || a.fullSnapshot?.meta?.updatedAt || 0;
-      const timeB = b.completedAt || b.fullSnapshot?.meta?.updatedAt || 0;
-      return timeB - timeA;
+    const matches = snapshot.docs.map((doc: any) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        sport: data.sport || data.meta?.sport || "cricket",
+        teamA: data.teamA || data.meta?.teamA || "Team A",
+        teamB: data.teamB || data.meta?.teamB || "Team B",
+        tournament: data.tournament || data.meta?.tournament || "Tournament Match",
+        venue: data.venue || data.meta?.venue || "",
+        finalResult: data.finalResult || "Match Completed",
+        completedAt: data.completedAt || data.fullSnapshot?.meta?.updatedAt || Date.now(),
+      };
     });
 
     return { success: true, matches };
@@ -35,7 +43,7 @@ export async function getMatchHistory(): Promise<{ success: boolean; matches: an
   }
 }
 
-// ২. সুরক্ষিতভাবে ডেটাবেস থেকে ম্যাচ ডিলিট করার ফাংশন
+// ২. সুরক্ষিতভাবে ডেটাবেস থেকে ম্যাচ ডিলিট করার অ্যাকশন
 export async function deleteMatchAction(id: string, clientToken?: string) {
   try {
     const cookieStore = await cookies();
