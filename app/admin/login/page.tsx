@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase/client";
 import { Lock, Mail, Eye, EyeOff, MessageCircle, ShieldAlert, Sparkles, Loader2 } from "lucide-react";
 import Navbar from "@/components/common/Navbar";
 import Footer from "@/components/common/Footer";
+import { siteConfig } from "@/lib/config/site";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -183,14 +184,14 @@ export default function LoginPage() {
                 </p>
                 <div className="mt-3 flex justify-center">
                   <a
-                    href="https://wa.me/8801710256453"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group inline-flex items-center gap-2 rounded-full border border-[#25D366]/30 bg-[#25D366]/10 px-4 py-2 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"
-                  >
-                    <MessageCircle size={15} />
-                    <span>Contact Developer on WhatsApp</span>
-                  </a>
+  href={siteConfig.developer.whatsappUrl}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="group inline-flex items-center gap-2 rounded-full border border-[#25D366]/30 bg-[#25D366]/10 px-4 py-2 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"
+>
+  <MessageCircle size={15} />
+  <span>Contact Developer on WhatsApp</span>
+</a>
                 </div>
               </div>
             </div>

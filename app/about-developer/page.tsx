@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Navbar from "@/components/common/Navbar";
 import Footer from "@/components/common/Footer";
+import { siteConfig } from "@/lib/config/site";
 import { 
   Code2, 
   Cpu, 
@@ -115,24 +116,25 @@ export default function AboutDeveloperPage() {
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2 md:justify-start">
-                <a
-                  href="https://wa.me/8801710256453" // <-- আপনার আসল WhatsApp নাম্বার দিন
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex min-h-[42px] items-center gap-2 rounded-full border border-[#25D366]/40 bg-[#25D366]/15 px-5 py-2 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/25 hover:text-white"
-                >
-                  <MessageCircle size={16} />
-                  <span>WhatsApp Message</span>
-                </a>
+  <a
+    href={siteConfig.developer.whatsappUrl}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex min-h-[42px] items-center gap-2 rounded-full border border-[#25D366]/40 bg-[#25D366]/15 px-5 py-2 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/25 hover:text-white"
+  >
+    <MessageCircle size={16} />
+    <span>WhatsApp Message</span>
+  </a>
 
-                <a
-                  href="mailto:asif992088@gmail.com" // <-- আপনার ইমেইল দিন
-                  className="flex min-h-[42px] items-center gap-2 rounded-full border border-border bg-ink px-5 py-2 text-xs font-bold text-fg-muted transition-all hover:border-fg-faint hover:text-fg"
-                >
-                  <Mail size={15} className="text-electric" />
-                  <span>Send Email</span>
-                </a>
-              </div>
+  <a
+    href={`mailto:${siteConfig.developer.email}`}
+    className="flex min-h-[42px] items-center gap-2 rounded-full border border-border bg-ink px-5 py-2 text-xs font-bold text-fg-muted transition-all hover:border-fg-faint hover:text-fg"
+  >
+    <Mail size={15} className="text-electric" />
+    <span>Send Email</span>
+  </a>
+</div>
+
             </div>
           </div>
         </div>

@@ -4,7 +4,7 @@ import { adminFirestore } from "@/lib/firebase/admin";
 import { NextRequest } from "next/server";
 import React from "react";
 
-export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ archiveId: string }> }) {
   try {
@@ -239,13 +239,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
         ]
       ),
       {
-        width: 1200,
-        height: 630,
-        headers: {
-          "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
-        },
-      }
-    );
+    width: 1200,
+    height: 630,
+    headers: {
+      "Cache-Control": "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable",
+    },
+  }
+);
   } catch (error) {
     console.error("OG Image Error:", error);
     return new Response("Failed to generate image", { status: 500 });

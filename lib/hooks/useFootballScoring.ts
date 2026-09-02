@@ -11,7 +11,11 @@ export function useFootballScoring(matchData: MatchData | null) {
   const { showToast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const matchId = (matchData as any)?.id;
+  const matchId =
+    (matchData as any)?.id ||
+    (matchData?.meta as any)?.id ||
+    (typeof window !== "undefined" ? window.location.pathname.split("/").filter(Boolean).pop() : "");
+
   const football = matchData?.football;
   const footballClock = useFootballClock(football);
 
@@ -42,7 +46,7 @@ export function useFootballScoring(matchData: MatchData | null) {
         };
       }
 
-      await commitActionAtomic(matchId, updates, "Toggle Football Clock", { football });
+      await commitActionAtomic(matchId, updates, "Toggle Football Clock", matchData);
     } catch (error) {
       console.error("Failed to toggle timer:", error);
       showToast("Timer update failed.", "error");
@@ -51,22 +55,27 @@ export function useFootballScoring(matchData: MatchData | null) {
     }
   };
 
-  // ২. হাফ পরিবর্তন (1st Half, Half Time, 2nd Half, Full Time)
+  // ২. হাফ পরিবর্তন (রানিং টাইম যোগ করা নিশ্চিত)
   const handleHalfChange = async (halfLabel: string) => {
     if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
 
     try {
+      const now = Date.now();
       const isSecondHalf = halfLabel === "2ND HALF";
       const isHalfTime = halfLabel === "HALF TIME";
       const isFullTime = halfLabel === "FULL TIME";
 
-      let newElapsed = football.elapsedSeconds || 0;
+      // 🛡️ FIX: রানিং থাকা অবস্থায় হাফ পরিবর্তন করলে অতিরিক্ত সময় হিসাব করা
+      const liveAddedSeconds =
+        football.isRunning && football.startedAt ? Math.floor((now - football.startedAt) / 1000) : 0;
+      let newElapsed = (football.elapsedSeconds || 0) + liveAddedSeconds;
+
       let newIsRunning = football.isRunning;
       let newStartedAt = football.startedAt;
 
       if (isSecondHalf && newElapsed < 45 * 60) {
-        newElapsed = 45 * 60; // ৪৫ মিনিটে জাম্প
+        newElapsed = 45 * 60; // ৪৫ মিনিটে শুরু
       }
 
       if (isHalfTime || isFullTime) {
@@ -82,7 +91,7 @@ export function useFootballScoring(matchData: MatchData | null) {
         [`matches/${matchId}/football/elapsedSeconds`]: newElapsed,
       };
 
-      await commitActionAtomic(matchId, updates, `Change Half to ${halfLabel}`, { football });
+      await commitActionAtomic(matchId, updates, `Change Half to ${halfLabel}`, matchData);
       showToast(`Half changed to ${halfLabel}`, "info");
     } catch (error) {
       console.error("Failed to change half:", error);
@@ -92,7 +101,7 @@ export function useFootballScoring(matchData: MatchData | null) {
     }
   };
 
-  // ৩. আন্তর্জাতিক মানের গোল হ্যান্ডলিং (প্লেয়ার + অ্যাসিস্ট + মিনিট)
+  // ৩. আন্তর্জাতিক মানের গোল হ্যান্ডলিং
   const recordGoalWithDetails = async (
     team: "A" | "B",
     details: {
@@ -144,7 +153,7 @@ export function useFootballScoring(matchData: MatchData | null) {
         [`matches/${matchId}/meta/currentEvent`]: "GOAL",
       };
 
-      await commitActionAtomic(matchId, updates, `Goal for Team ${team} by ${details.scorerName}`, { football });
+      await commitActionAtomic(matchId, updates, `Goal for Team ${team} by ${details.scorerName}`, matchData);
       showToast(`⚽ GOAL! ${details.scorerName} (${details.minute}')`, "success");
     } catch (error) {
       console.error("Error recording goal:", error);
@@ -154,7 +163,7 @@ export function useFootballScoring(matchData: MatchData | null) {
     }
   };
 
-  // ৪. আন্তর্জাতিক মানের ডিসিপ্লিনারি কার্ড হ্যান্ডলিং
+  // ৪. ডিসিপ্লিনারি কার্ড হ্যান্ডলিং
   const recordCardWithDetails = async (
     team: "A" | "B",
     details: {
@@ -192,7 +201,7 @@ export function useFootballScoring(matchData: MatchData | null) {
         [`matches/${matchId}/meta/currentEvent`]: isRed ? "RED CARD" : "YELLOW CARD",
       };
 
-      await commitActionAtomic(matchId, updates, `${isRed ? "Red" : "Yellow"} Card for ${details.playerName}`, { football });
+      await commitActionAtomic(matchId, updates, `${isRed ? "Red" : "Yellow"} Card for ${details.playerName}`, matchData);
       showToast(`${isRed ? "🟥 Red Card" : "🟨 Yellow Card"} — ${details.playerName}`, isRed ? "error" : "info");
     } catch (error) {
       console.error("Error recording card:", error);
@@ -223,7 +232,7 @@ export function useFootballScoring(matchData: MatchData | null) {
         [`matches/${matchId}/football/${currentHalfKey}/possession`]: newPossession,
       };
 
-      await commitActionAtomic(matchId, updates, "Adjust Possession", { football });
+      await commitActionAtomic(matchId, updates, "Adjust Possession", matchData);
     } catch (error) {
       console.error("Failed to adjust possession:", error);
     } finally {

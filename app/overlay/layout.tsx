@@ -15,5 +15,22 @@ export const metadata: Metadata = {
 };
 
 export default function OverlayLayout({ children }: { children: ReactNode }) {
-  return <OverlayThemeGuard>{children}</OverlayThemeGuard>;
+  return (
+    <>
+      {/* 🛡️ OBS Studio-এর জন্য 100% হার্ডকোডেড ট্রান্সপারেন্সি লক */}
+      <style>{`
+        html, body {
+          background: transparent !important;
+          background-color: transparent !important;
+          background-image: none !important;
+          overflow: hidden !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+      `}</style>
+      <div className="obs-overlay-root min-h-screen w-screen bg-transparent overflow-hidden">
+        <OverlayThemeGuard>{children}</OverlayThemeGuard>
+      </div>
+    </>
+  );
 }

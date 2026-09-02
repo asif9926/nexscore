@@ -3,8 +3,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ref as dbRef, update } from "firebase/database";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { rtdb, storage } from "@/lib/firebase/client";
+import { rtdb } from "@/lib/firebase/client"; // 👈 storage import বাদ দেওয়া হয়েছে
 import {
   Tv,
   Award,
@@ -112,25 +111,24 @@ export default function BroadcastControls({
     });
   };
 
-  const processImageToBlob = (file: File): Promise<Blob> => {
+  // ⚡ ডিভাইস থেকে সরাসরি কম্প্রেস করে Base64 WebP তৈরি করার লজিক (৫-১০ কেবি)
+  const processImageToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 300;
+          const MAX_WIDTH = 240;
           const scale = MAX_WIDTH / img.width;
           canvas.width = MAX_WIDTH;
           canvas.height = img.height * scale;
 
           const ctx = canvas.getContext("2d");
           ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          canvas.toBlob(
-            (blob) => (blob ? resolve(blob) : reject(new Error("Blob conversion failed"))),
-            "image/webp",
-            0.85
-          );
+          // অতি হালকা WebP ফরমেটে রূপান্তর
+          const base64 = canvas.toDataURL("image/webp", 0.8);
+          resolve(base64);
         };
         img.onerror = reject;
         img.src = e.target?.result as string;
@@ -140,31 +138,26 @@ export default function BroadcastControls({
     });
   };
 
+  // 🚀 সরাসরি ওয়ান-ক্লিকে RTDB-তে লোগো সেভ
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, side: "left" | "right") => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
       setUploadingSide(side);
-      const optimizedBlob = await processImageToBlob(file);
-
-      const logoPath = `match_logos/${matchId}/${side}_${Date.now()}.webp`;
-      const fileStorageRef = storageRef(storage, logoPath);
-
-      await uploadBytes(fileStorageRef, optimizedBlob);
-      const downloadURL = await getDownloadURL(fileStorageRef);
+      const base64Data = await processImageToBase64(file);
 
       const field = side === "left" ? "customLogoLeftUrl" : "customLogoUrl";
 
       await update(dbRef(rtdb), {
-        [`matches/${matchId}/meta/${field}`]: downloadURL,
+        [`matches/${matchId}/meta/${field}`]: base64Data,
         [`matches/${matchId}/meta/updatedAt`]: Date.now(),
       });
 
-      showToast(`${side === "left" ? "Left" : "Channel"} logo updated!`, "success");
+      showToast(`${side === "left" ? "Tournament" : "Channel"} logo updated instantly!`, "success");
     } catch (error) {
       console.error("Logo upload error:", error);
-      showToast("Failed to upload logo.", "error");
+      showToast("Failed to process logo.", "error");
     } finally {
       setUploadingSide(null);
     }

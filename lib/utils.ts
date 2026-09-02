@@ -1,26 +1,36 @@
-// lib/utils.ts
-import { type ClassValue, clsx } from "clsx";
+import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
 /**
- * Tailwind CSS class merging utility
+ * Tailwind ক্লাস মার্জ করার জন্য স্ট্যান্ডার্ড হেল্পার
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 /**
- * Ensures data is an array (Firebase RTDB অবজেক্ট বা নাল ভ্যালু রিটার্ন করলেও ক্র্যাশ ঠেকাবে)
+ * যেকোনো ভ্যালুকে নিরাপদ অ্যারেতে রূপান্তর করে (Uncaught TypeError রোধে)
  */
-export function safeArray<T>(arr?: any): T[] {
-  if (!arr) return [];
+export function safeArray<T>(arr: any): T[] {
   if (Array.isArray(arr)) return arr;
-  if (typeof arr === "object") return Object.values(arr);
+  if (arr && typeof arr === "object") return Object.values(arr);
   return [];
 }
 
 /**
- * ক্রিকেট ওভার ("10.4") কে দশমিক মানে কনভার্ট করে (10 + 4/6 = 10.6667)
+ * দলের নাম থেকে ২/৩ অক্ষরের শর্টকোড তৈরি করে
+ */
+export function getShortName(name?: string, fallback = "TM"): string {
+  if (!name) return fallback;
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.slice(0, 3).toUpperCase();
+}
+
+/**
+ * "overs.balls" স্ট্রিংকে ডেসিমাল ওভারে রূপান্তর করে (যেমন: "2.3" -> 2.5)
  */
 export function oversToDecimal(oversStr?: string | number): number {
   if (!oversStr) return 0;
@@ -29,59 +39,59 @@ export function oversToDecimal(oversStr?: string | number): number {
 }
 
 /**
- * Current Run Rate (CRR) গণনা
+ * স্কোয়াডের প্লেয়ার সংখ্যার ওপর ভিত্তি করে সঠিক অল-আউট উইকেট সংখ্যা বের করে
+ * (১১ জনের দলে ১০ উইকেট, ৬ জনের টুর্নামেন্টে ৫ উইকেট)
  */
-export function calculateCRR(score: number = 0, oversStr?: string | number): string {
-  const [overs, balls] = String(oversStr || "0.0").split(".").map(Number);
-  const totalBalls = (overs || 0) * 6 + (balls || 0);
-  if (totalBalls === 0) return "0.00";
-  return ((score / totalBalls) * 6).toFixed(2);
+export function getMaxWickets(squadCount?: number): number {
+  if (typeof squadCount === "number" && squadCount > 1) {
+    return squadCount - 1;
+  }
+  return 10;
 }
 
 /**
- * Required Run Rate (RRR) গণনা
+ * Current Run Rate (CRR) হিসাব করে
+ */
+export function calculateCRR(score: number, oversStr: string | number): string {
+  const oversDec = oversToDecimal(oversStr);
+  if (oversDec <= 0) return "0.00";
+  return (score / oversDec).toFixed(2);
+}
+
+/**
+ * Required Run Rate (RRR) হিসাব করে
  */
 export function calculateRRR(
-  target: number = 0,
-  currentScore: number = 0,
-  maxOvers: number = 20,
-  currentOversStr?: string | number
+  targetScore: number,
+  currentScore: number,
+  maxOvers: number,
+  currentOversStr: string | number
 ): string {
+  const runsNeeded = targetScore - currentScore;
+  if (runsNeeded <= 0) return "0.00";
+
   const [overs, balls] = String(currentOversStr || "0.0").split(".").map(Number);
-  const ballsBowled = (overs || 0) * 6 + (balls || 0);
-  const remainingBalls = Math.max(0, maxOvers * 6 - ballsBowled);
-  const runsNeeded = Math.max(0, target - currentScore);
+  const totalBallsBowled = (overs || 0) * 6 + (balls || 0);
+  const totalBallsInMatch = maxOvers * 6;
+  const ballsRemaining = totalBallsInMatch - totalBallsBowled;
 
-  if (runsNeeded === 0) return "0.00";
-  if (remainingBalls === 0) return runsNeeded > 0 ? "0.00" : "0.00";
-  return ((runsNeeded / remainingBalls) * 6).toFixed(2);
+  if (ballsRemaining <= 0) return "0.00";
+  return ((runsNeeded / ballsRemaining) * 6).toFixed(2);
 }
 
 /**
- * ব্যাটার স্ট্রাইক রেট (SR) গণনা
+ * বোলারের ইকোনমি রেট হিসাব করে
  */
-export function calculateSR(runs: number = 0, balls: number = 0): string {
-  if (!balls || balls <= 0) return "0.0";
-  return ((runs / balls) * 100).toFixed(1);
-}
-
-/**
- * বোলার ইকোনমি রেট (Economy) গণনা
- */
-export function calculateEconomy(runs: number = 0, oversStr?: string | number): string {
+export function calculateEconomy(runs: number, oversStr: string | number): string {
   const oversDec = oversToDecimal(oversStr);
-  if (oversDec === 0) return "0.00";
+  if (oversDec <= 0) return "0.00";
   return (runs / oversDec).toFixed(2);
 }
 
 /**
- * টিম নাম থেকে ২-৩ অক্ষরের ব্রডকাস্ট শর্ট কোড তৈরি
+ * ব্যাটারের স্ট্রাইক রেট হিসাব করে
  */
-export function getShortName(name?: string, fallback: string = "TM"): string {
-  if (!name || name.trim() === "") return fallback;
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return name.slice(0, 3).toUpperCase();
+export function calculateSR(runs: number, balls: number): string {
+  if (!balls || balls <= 0) return "0.0";
+  return ((runs / balls) * 100).toFixed(1);
 }

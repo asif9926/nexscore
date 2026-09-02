@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Radio, History, Home, Sun, Moon } from "lucide-react";
-import { useMatchData } from "@/lib/hooks/useMatchData";
+import { useAllLiveMatches } from "@/lib/hooks/useMatchData";
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { matchData } = useMatchData();
-  const isLive = matchData?.meta?.status === "live";
+  // 🛡️ সব লাইভ ম্যাচ ট্র্যাক করে নিখুঁত লাইভ সিগন্যাল
+  const { matches: liveMatches } = useAllLiveMatches();
+  const isLive = liveMatches.length > 0;
 
   const [isSunlight, setIsSunlight] = useState(false);
 

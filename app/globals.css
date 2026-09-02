@@ -168,3 +168,15 @@ body {
   transform: translate3d(0, 0, 0);
   will-change: transform, opacity;
 }
+
+button, 
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* OBS ব্রাউজার সোর্সের জন্য বডি ট্রান্সপারেন্সি */
+body:has(.obs-overlay-root) {
+  background-color: transparent !important;
+  background-image: none !important;
+  overflow: hidden !important;
+}

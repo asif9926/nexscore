@@ -2,11 +2,12 @@
 "use client";
 
 import { useState } from "react";
-import { ref, update, get, set } from "firebase/database";
+import { ref, update } from "firebase/database";
 import { rtdb } from "@/lib/firebase/client";
+import { commitActionAtomic } from "@/lib/firebase/actions";
 import { useToast } from "@/lib/context/ToastContext";
 import type { MatchData, Batsman, Bowler, FallOfWicket } from "@/lib/types/match";
-import { safeArray } from "@/lib/utils";
+import { safeArray, getMaxWickets } from "@/lib/utils";
 import {
   generateRunCommentary,
   generateWicketCommentary,
@@ -95,31 +96,9 @@ export function useCricketScoring(matchData: MatchData | null) {
 
   const bowlersList = safeArray<Bowler>(currentInnings?.bowlers);
 
-  // 🛡️ Active Bowler Resolver (বোলার লক প্রিভেন্ট করার নির্ভুল লজিক)
   const activeBowlerObj =
     bowlersList.find((b) => b.isActive) ||
     (currentInnings?.overs === "0.0" && bowlersList.length > 0 ? bowlersList[0] : undefined);
-
-  // Atomic Undo Snapshot Logger (Per Match)
-  const saveUndoSnapshot = async (currentMatch: any) => {
-    if (!matchId) return;
-    try {
-      const logRef = ref(rtdb, `match_actionLogs/${matchId}`);
-      const snap = await get(logRef);
-      const history = snap.exists() ? snap.val() : [];
-      const newHistory = Array.isArray(history) ? history : Object.values(history);
-
-      newHistory.push({
-        state: currentMatch,
-        timestamp: Date.now(),
-      });
-
-      if (newHistory.length > 25) newHistory.shift();
-      await set(logRef, newHistory);
-    } catch (e) {
-      console.error("Undo Snapshot Error:", e);
-    }
-  };
 
   // ==========================================
   // 1️⃣ HANDLE RUNS (DOT, 1, 2, 3, 4, 5, 6)
@@ -143,8 +122,6 @@ export function useCricketScoring(matchData: MatchData | null) {
 
     setIsProcessing(true);
     try {
-      await saveUndoSnapshot(matchData);
-
       const newScore = (currentInnings.score || 0) + runs;
       const newOvers = addBallToOvers(currentInnings.overs || "0.0");
       const isOverComplete = newOvers.endsWith(".0");
@@ -198,7 +175,6 @@ export function useCricketScoring(matchData: MatchData | null) {
         return b;
       });
 
-      // Commentary & Timeline Log
       const ballLog = {
         ballNumber: newOvers,
         runs,
@@ -214,7 +190,6 @@ export function useCricketScoring(matchData: MatchData | null) {
         timestamp: Date.now(),
       };
       const updatedRecentBalls = [...safeArray(currentInnings.recentBalls), ballLog];
-
       const runRate = calculateRunRate(newScore, newOvers);
 
       let eventText: string | null = null;
@@ -232,7 +207,6 @@ export function useCricketScoring(matchData: MatchData | null) {
         [`matches/${matchId}/cricket/${currentInningsKey}/batsmen`]: updatedBatsmen,
         [`matches/${matchId}/cricket/${currentInningsKey}/bowlers`]: updatedBowlers,
         [`matches/${matchId}/cricket/${currentInningsKey}/recentBalls`]: updatedRecentBalls,
-        [`matches/${matchId}/meta/updatedAt`]: Date.now(),
       };
 
       if (eventText) updates[`matches/${matchId}/meta/currentEvent`] = eventText;
@@ -252,9 +226,9 @@ export function useCricketScoring(matchData: MatchData | null) {
         }
       }
 
-      await update(ref(rtdb), updates);
+      await commitActionAtomic(matchId, updates, `Runs: ${runs}`, matchData);
 
-      if (isOverComplete && oversToTotalBalls(newOvers) < maxOvers * 6) {
+      if (isOverComplete && oversToTotalBalls(newOvers) < maxOvers * 6 && !(currentInningsNum === 2 && target && newScore >= target)) {
         setIsNewBowlerModalOpen(true);
       }
     } catch (err) {
@@ -273,17 +247,16 @@ export function useCricketScoring(matchData: MatchData | null) {
 
     setIsProcessing(true);
     try {
-      await saveUndoSnapshot(matchData);
-
       const updatedBatsmen = safeArray<Batsman>(currentInnings.batsmen).map((b) => {
         if (!b.isOut) return { ...b, onStrike: !b.onStrike };
         return b;
       });
 
-      await update(ref(rtdb), {
+      const updates = {
         [`matches/${matchId}/cricket/${currentInningsKey}/batsmen`]: updatedBatsmen,
-        [`matches/${matchId}/meta/updatedAt`]: Date.now(),
-      });
+      };
+
+      await commitActionAtomic(matchId, updates, "Swap Strike", matchData);
       showToast("স্ট্রাইক অদলবদল করা হয়েছে।", "info");
     } catch {
       showToast("স্ট্রাইক পরিবর্তন ব্যর্থ হয়েছে।", "error");
@@ -293,7 +266,7 @@ export function useCricketScoring(matchData: MatchData | null) {
   };
 
   // ==========================================
-  // 3️⃣ WICKET ENGINE
+  // 3️⃣ WICKET ENGINE (STRIKE RESOLVER FIXED)
   // ==========================================
   const confirmWicket = async (data: {
     outBatsmanId: string;
@@ -312,8 +285,6 @@ export function useCricketScoring(matchData: MatchData | null) {
 
     setIsProcessing(true);
     try {
-      await saveUndoSnapshot(matchData);
-
       const runsCompleted = data.runsCompleted || 0;
       const isLegalDelivery = !data.isWideDelivery;
       const extraPenalty = data.isWideDelivery ? 1 : 0;
@@ -322,11 +293,35 @@ export function useCricketScoring(matchData: MatchData | null) {
       const newWickets = (currentInnings.wickets || 0) + 1;
       const newOvers = isLegalDelivery ? addBallToOvers(currentInnings.overs || "0.0") : currentInnings.overs || "0.0";
       const isOverComplete = isLegalDelivery && newOvers.endsWith(".0");
+      const bowlerNewOvers = isLegalDelivery ? addBallToOvers(activeBowlerObj.overs || "0.0") : activeBowlerObj.overs || "0.0";
 
       const outBatsman = safeArray<Batsman>(currentInnings.batsmen).find((b) => b.id === data.outBatsmanId);
       const isStrikerOut = outBatsman?.onStrike;
 
-      // Update Batsmen
+      // 🛡️ PERFECT STRIKE RESOLVER
+      let survivingBatsmanStrike = false;
+      let newBatsmanStrike = false;
+
+      if (isStrikerOut) {
+        if (isOverComplete) {
+          survivingBatsmanStrike = true;
+          newBatsmanStrike = false;
+        } else {
+          survivingBatsmanStrike = false;
+          newBatsmanStrike = true;
+        }
+      } else {
+        const oddRuns = runsCompleted % 2 !== 0;
+        if (isOverComplete) {
+          survivingBatsmanStrike = !oddRuns;
+          newBatsmanStrike = oddRuns;
+        } else {
+          survivingBatsmanStrike = oddRuns;
+          newBatsmanStrike = !oddRuns;
+        }
+      }
+
+      // Update existing batsmen
       let updatedBatsmen = safeArray<Batsman>(currentInnings.batsmen).map((b) => {
         if (b.id === data.outBatsmanId) {
           return {
@@ -338,11 +333,8 @@ export function useCricketScoring(matchData: MatchData | null) {
             onStrike: false,
           };
         }
-        if (!b.isOut && b.id !== data.outBatsmanId) {
-          let strikeState = b.onStrike;
-          if (runsCompleted % 2 !== 0) strikeState = !strikeState;
-          if (isOverComplete) strikeState = !strikeState;
-          return { ...b, onStrike: strikeState };
+        if (!b.isOut) {
+          return { ...b, onStrike: survivingBatsmanStrike };
         }
         return b;
       });
@@ -358,7 +350,7 @@ export function useCricketScoring(matchData: MatchData | null) {
             balls: 0,
             fours: 0,
             sixes: 0,
-            onStrike: isStrikerOut ? (runsCompleted % 2 === 0 ? !isOverComplete : isOverComplete) : isOverComplete,
+            onStrike: newBatsmanStrike,
             isOut: false,
           };
           updatedBatsmen.push(newBatsmanObj);
@@ -373,21 +365,24 @@ export function useCricketScoring(matchData: MatchData | null) {
         "Obstructing the field",
       ].includes(data.dismissalType);
 
-      // Update Bowlers
+      // Maiden Check on Wicket Ball
+      const recentDeliveries = [...safeArray(currentInnings.recentBalls), { runs: runsCompleted + extraPenalty, isWicket: true }];
+      const isMaiden = isOverComplete && isLegalDelivery && checkAndCalculateMaidenOver(recentDeliveries, bowlerNewOvers);
+
       const updatedBowlers = safeArray<Bowler>(currentInnings.bowlers).map((b) => {
         if (b.id === activeBowlerObj?.id) {
           return {
             ...b,
             wickets: isBowlerWicket ? (b.wickets || 0) + 1 : b.wickets || 0,
             runs: (b.runs || 0) + runsCompleted + extraPenalty,
-            overs: isLegalDelivery ? addBallToOvers(b.overs || "0.0") : b.overs || "0.0",
+            overs: bowlerNewOvers,
+            maidens: isMaiden ? (b.maidens || 0) + 1 : b.maidens || 0,
             isActive: !isOverComplete,
           };
         }
         return b;
       });
 
-      // Fall of Wickets
       const fowEntry: FallOfWicket = {
         score: newScore,
         wicketNumber: newWickets,
@@ -396,7 +391,6 @@ export function useCricketScoring(matchData: MatchData | null) {
       };
       const updatedFOW = [...safeArray(currentInnings.fallOfWickets), fowEntry];
 
-      // Commentary & Timeline Log
       const ballLog = {
         ballNumber: newOvers,
         runs: runsCompleted,
@@ -414,8 +408,10 @@ export function useCricketScoring(matchData: MatchData | null) {
       };
       const updatedRecentBalls = [...safeArray(currentInnings.recentBalls), ballLog];
 
-      const maxWickets = Math.max(1, battingSquad.length - 1);
+      const maxWickets = getMaxWickets(battingSquad.length);
       const isAllOut = newWickets >= maxWickets;
+      const target = currentInnings.target;
+      const isTargetReached = currentInningsNum === 2 && target && newScore >= target;
 
       const updates: Record<string, any> = {
         [`matches/${matchId}/cricket/${currentInningsKey}/score`]: newScore,
@@ -427,7 +423,6 @@ export function useCricketScoring(matchData: MatchData | null) {
         [`matches/${matchId}/cricket/${currentInningsKey}/fallOfWickets`]: updatedFOW,
         [`matches/${matchId}/cricket/${currentInningsKey}/recentBalls`]: updatedRecentBalls,
         [`matches/${matchId}/meta/currentEvent`]: "WICKET",
-        [`matches/${matchId}/meta/updatedAt`]: Date.now(),
       };
 
       if (data.isWideDelivery) {
@@ -435,19 +430,19 @@ export function useCricketScoring(matchData: MatchData | null) {
           (currentInnings.extras?.wide || 0) + 1;
       }
 
-      if (isAllOut) {
+      if (isAllOut || isTargetReached) {
         updates[`matches/${matchId}/cricket/${currentInningsKey}/isCompleted`] = true;
-        if (currentInningsNum === 1) {
+        if (currentInningsNum === 1 && isAllOut) {
           setIsInningsBreakModalOpen(true);
         } else {
           updates[`matches/${matchId}/meta/activeGraphic`] = "RESULT_POSTER";
         }
       }
 
-      await update(ref(rtdb), updates);
+      await commitActionAtomic(matchId, updates, `Wicket: ${outBatsman?.name}`, matchData);
       setIsWicketModalOpen(false);
 
-      if (isOverComplete && !isAllOut) {
+      if (isOverComplete && !isAllOut && !isTargetReached) {
         setIsNewBowlerModalOpen(true);
       }
     } catch (e) {
@@ -459,7 +454,7 @@ export function useCricketScoring(matchData: MatchData | null) {
   };
 
   // ==========================================
-  // 4️⃣ EXTRAS ENGINE (WIDE, NO BALL, BYE, LEG BYE)
+  // 4️⃣ EXTRAS ENGINE (MATCH FINISH & BOUNDARIES FIXED)
   // ==========================================
   const confirmExtras = async (data: { type: string; extraRunsRan: number; isFromBat?: boolean }) => {
     if (isProcessing || !matchId || !matchData || !currentInnings) return;
@@ -472,8 +467,6 @@ export function useCricketScoring(matchData: MatchData | null) {
 
     setIsProcessing(true);
     try {
-      await saveUndoSnapshot(matchData);
-
       const striker = activeBatsmen.find((b) => b.onStrike);
       const nonStriker = activeBatsmen.find((b) => !b.onStrike);
       const isWide = data.type === "Wide";
@@ -487,18 +480,21 @@ export function useCricketScoring(matchData: MatchData | null) {
       const isLegal = isByeLegBye;
       const newOvers = isLegal ? addBallToOvers(currentInnings.overs || "0.0") : currentInnings.overs || "0.0";
       const isOverComplete = isLegal && newOvers.endsWith(".0");
+      const bowlerNewOvers = isLegal ? addBallToOvers(activeBowlerObj.overs || "0.0") : activeBowlerObj.overs || "0.0";
 
-      // Update Batsmen
+      // Update Batsmen & Boundaries
       const updatedBatsmen = safeArray<Batsman>(currentInnings.batsmen).map((b) => {
         if (b.id === striker?.id) {
           const batRuns = isNoBall && data.isFromBat ? (b.runs || 0) + data.extraRunsRan : b.runs || 0;
           const ballFaced = isLegal || (isNoBall && data.isFromBat) ? (b.balls || 0) + 1 : b.balls || 0;
+          const newFours = isNoBall && data.isFromBat && data.extraRunsRan === 4 ? (b.fours || 0) + 1 : b.fours || 0;
+          const newSixes = isNoBall && data.isFromBat && data.extraRunsRan === 6 ? (b.sixes || 0) + 1 : b.sixes || 0;
 
           let strikeState = b.onStrike;
           if (data.extraRunsRan % 2 !== 0) strikeState = !strikeState;
           if (isOverComplete) strikeState = !strikeState;
 
-          return { ...b, runs: batRuns, balls: ballFaced, onStrike: strikeState };
+          return { ...b, runs: batRuns, balls: ballFaced, fours: newFours, sixes: newSixes, onStrike: strikeState };
         }
         if (b.id === nonStriker?.id) {
           let strikeState = b.onStrike;
@@ -509,21 +505,24 @@ export function useCricketScoring(matchData: MatchData | null) {
         return b;
       });
 
-      // Update Bowlers
+      // Bowler stats
       const bowlerRunsAdded = isWide || isNoBall ? totalRunsFromBall : 0;
+      const recentDeliveries = [...safeArray(currentInnings.recentBalls), { runs: bowlerRunsAdded, isWicket: false }];
+      const isMaiden = isOverComplete && isLegal && checkAndCalculateMaidenOver(recentDeliveries, bowlerNewOvers);
+
       const updatedBowlers = safeArray<Bowler>(currentInnings.bowlers).map((b) => {
         if (b.id === activeBowlerObj?.id) {
           return {
             ...b,
             runs: (b.runs || 0) + bowlerRunsAdded,
-            overs: isLegal ? addBallToOvers(b.overs || "0.0") : b.overs || "0.0",
+            overs: bowlerNewOvers,
+            maidens: isMaiden ? (b.maidens || 0) + 1 : b.maidens || 0,
             isActive: !isOverComplete,
           };
         }
         return b;
       });
 
-      // Update Extras Table
       const currentExtras = currentInnings.extras || { wide: 0, noBall: 0, bye: 0, legBye: 0 };
       const updatedExtras = { ...currentExtras };
       if (isWide) updatedExtras.wide = (updatedExtras.wide || 0) + totalRunsFromBall;
@@ -531,7 +530,6 @@ export function useCricketScoring(matchData: MatchData | null) {
       if (data.type === "Bye") updatedExtras.bye = (updatedExtras.bye || 0) + data.extraRunsRan;
       if (data.type === "Leg Bye") updatedExtras.legBye = (updatedExtras.legBye || 0) + data.extraRunsRan;
 
-      // Commentary & Timeline Log
       const label = `${data.extraRunsRan > 0 ? data.extraRunsRan : ""}${
         data.type === "Wide" ? "Wd" : data.type === "No Ball" ? "Nb" : data.type === "Leg Bye" ? "lb" : "b"
       }`;
@@ -552,7 +550,12 @@ export function useCricketScoring(matchData: MatchData | null) {
       };
       const updatedRecentBalls = [...safeArray(currentInnings.recentBalls), ballLog];
 
-      await update(ref(rtdb), {
+      const maxOvers = cricket?.maxOvers || 20;
+      const target = currentInnings.target;
+      const isTargetReached = currentInningsNum === 2 && target && newScore >= target;
+      const isOversFinished = oversToTotalBalls(newOvers) >= maxOvers * 6;
+
+      const updates: Record<string, any> = {
         [`matches/${matchId}/cricket/${currentInningsKey}/score`]: newScore,
         [`matches/${matchId}/cricket/${currentInningsKey}/overs`]: newOvers,
         [`matches/${matchId}/cricket/${currentInningsKey}/runRate`]: calculateRunRate(newScore, newOvers),
@@ -560,15 +563,28 @@ export function useCricketScoring(matchData: MatchData | null) {
         [`matches/${matchId}/cricket/${currentInningsKey}/batsmen`]: updatedBatsmen,
         [`matches/${matchId}/cricket/${currentInningsKey}/bowlers`]: updatedBowlers,
         [`matches/${matchId}/cricket/${currentInningsKey}/recentBalls`]: updatedRecentBalls,
-        [`matches/${matchId}/meta/updatedAt`]: Date.now(),
-      });
+      };
 
+      if (isTargetReached) {
+        updates[`matches/${matchId}/cricket/${currentInningsKey}/isCompleted`] = true;
+        updates[`matches/${matchId}/meta/activeGraphic`] = "RESULT_POSTER";
+      } else if (isOversFinished) {
+        updates[`matches/${matchId}/cricket/${currentInningsKey}/isCompleted`] = true;
+        if (currentInningsNum === 1) {
+          setIsInningsBreakModalOpen(true);
+        } else {
+          updates[`matches/${matchId}/meta/activeGraphic`] = "RESULT_POSTER";
+        }
+      }
+
+      await commitActionAtomic(matchId, updates, `Extra: ${label}`, matchData);
       setIsExtrasModalOpen(false);
 
-      if (isOverComplete) {
+      if (isOverComplete && !isTargetReached && !isOversFinished) {
         setIsNewBowlerModalOpen(true);
       }
-    } catch {
+    } catch (err) {
+      console.error("Extras error:", err);
       showToast("এক্সট্রা যোগ করতে ব্যর্থ হয়েছে।", "error");
     } finally {
       setIsProcessing(false);
@@ -609,11 +625,11 @@ export function useCricketScoring(matchData: MatchData | null) {
           .concat(newBowlerObj);
       }
 
-      await update(ref(rtdb), {
+      const updates = {
         [`matches/${matchId}/cricket/${currentInningsKey}/bowlers`]: updatedBowlers,
-        [`matches/${matchId}/meta/updatedAt`]: Date.now(),
-      });
+      };
 
+      await commitActionAtomic(matchId, updates, `New Bowler: ${selectedBowler.name}`, matchData);
       setIsNewBowlerModalOpen(false);
       showToast(`${selectedBowler.name} বোলিং প্রান্তে এসেছেন।`, "success");
     } catch {
@@ -667,13 +683,13 @@ export function useCricketScoring(matchData: MatchData | null) {
         isCompleted: false,
       };
 
-      await update(ref(rtdb), {
+      const updates = {
         [`matches/${matchId}/cricket/currentInnings`]: 2,
         [`matches/${matchId}/cricket/innings2`]: innings2Data,
         [`matches/${matchId}/meta/activeGraphic`]: "LOWER_THIRD",
-        [`matches/${matchId}/meta/updatedAt`]: Date.now(),
-      });
+      };
 
+      await commitActionAtomic(matchId, updates, "Start 2nd Innings", matchData);
       setIsInningsBreakModalOpen(false);
       showToast("২য় ইনিংস সফলভাবে শুরু হয়েছে!", "success");
     } catch {

@@ -138,13 +138,6 @@ export default function DynamicControlDashboard() {
       if (["INPUT", "SELECT", "TEXTAREA"].includes(targetTag)) return;
       if (isProcessing) return;
 
-      // Undo shortcut (Ctrl + Z / Cmd + Z)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        undoLastAction(matchId);
-        return;
-      }
-
       // Close modal on Escape
       if (e.key === "Escape") {
         if (isWicketModalOpen) setIsWicketModalOpen(false);
@@ -156,7 +149,15 @@ export default function DynamicControlDashboard() {
         return;
       }
 
+      // 🛡️ FIX: মডাল ওপেন থাকলে বা ইনিংস সমাপ্ত হলে কোনো স্কোরিং বা Undo এক্সিকিউট হবে না
       if (isAnyModalOpen || currentInnings?.isCompleted) return;
+
+      // Undo shortcut (Ctrl + Z / Cmd + Z)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undoLastAction(matchId);
+        return;
+      }
 
       // Cricket Scoring Shortcuts
       if (matchData?.meta?.sport === "cricket") {

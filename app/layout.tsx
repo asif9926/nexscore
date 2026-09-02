@@ -1,24 +1,25 @@
+// app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Anton, Rajdhani } from "next/font/google";
 import { MatchDataProvider } from "@/lib/context/MatchDataContext";
 import { ToastProvider } from "@/lib/context/ToastContext";
 import "./globals.css";
 
-// UI / body role — see NexScore-Design-System.md §1.2
+// UI / body font
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-// Scoreboard role — the signature typeface, used only for live score digits
+// Scoreboard font
 const anton = Anton({
   variable: "--font-anton",
   subsets: ["latin"],
   weight: "400",
 });
 
-// Broadcast-label role — LIVE badges, half/over labels, timers
+// Broadcast labels font
 const rajdhani = Rajdhani({
   variable: "--font-rajdhani",
   subsets: ["latin"],
@@ -44,7 +45,6 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Matches --ink from the design system, not the old slate #020617
   themeColor: "#06080F",
 };
 
@@ -56,8 +56,23 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${spaceGrotesk.variable} ${anton.variable} ${rajdhani.variable} antialiased`}
     >
+      <head>
+        {/* ☀️ FOUT প্রিভেনশন স্ক্রিপ্ট: পেজ পেইন্ট হওয়ার আগেই থিম ক্লাস সেট করবে */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function() {
+              try {
+                if (localStorage.getItem('nexscore_sunlight') === 'true') {
+                  document.documentElement.classList.add('sunlight');
+                }
+              } catch (e) {}
+            })()`,
+          }}
+        />
+      </head>
       <body className="min-h-screen flex flex-col w-full max-w-full overflow-x-clip">
         <ToastProvider>
           <MatchDataProvider>{children}</MatchDataProvider>

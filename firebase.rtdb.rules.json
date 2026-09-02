@@ -2,8 +2,9 @@
   "rules": {
     "matches": {
       ".read": true,
+      ".indexOn": ["meta/status", "meta/createdBy"],
       "$matchId": {
-        ".write": "auth != null && (!data.exists() || data.child('meta/createdBy').val() === auth.uid)"
+        ".write": "auth != null && (!data.exists() || data.child('meta/createdBy').val() === auth.uid || newData.child('meta/createdBy').val() === auth.uid)"
       }
     },
     "admin_active_matches": {
@@ -14,8 +15,8 @@
     },
     "match_actionLogs": {
       "$matchId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+        ".read": true,
+        ".write": "auth != null && (root.child('matches').child($matchId).child('meta/createdBy').val() === auth.uid || !root.child('matches').child($matchId).exists())"
       }
     }
   }

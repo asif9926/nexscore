@@ -11,10 +11,11 @@ interface Props {
   theme?: string;
 }
 
+// 🛡️ CRASH FIX: একাধিক স্পেস বা অস্বাভাবিক নাম থাকলেও ক্র্যাশ করবে না
 const getShortName = (name?: string, fallback = "TM") => {
   if (!name) return fallback;
-  const parts = name.trim().split(" ");
-  if (parts.length >= 2) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2 && parts[0]?.[0] && parts[1]?.[0]) {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
   return name.slice(0, 3).toUpperCase();
@@ -24,13 +25,20 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
   const { matchData, loading } = useMatchData(matchId);
   const footballClock = useFootballClock(matchData?.football);
 
-  if (loading || !matchData?.meta || !matchData.football || matchData.meta.showScoreboard === false) {
+  if (loading || !matchData?.meta || !matchData.football) {
     return null;
   }
 
   const { meta, football } = matchData;
   const activeGraphic = meta.activeGraphic || "LOWER_THIRD";
   const activeTheme = theme || meta.activeTheme || "premier";
+
+  // 🛡️ VISIBILITY FIX: স্কোরবোর্ড অফ থাকলেও হাফ-টাইম পোস্টার দেখতে পাওয়া যাবে
+  const isScoreboardVisible = meta.showScoreboard !== false;
+  const hasSpecialGraphic = activeGraphic !== "LOWER_THIRD";
+  if (!isScoreboardVisible && !hasSpecialGraphic) {
+    return null;
+  }
 
   const teamACode = getShortName(meta.teamA, "TMA");
   const teamBCode = getShortName(meta.teamB, "TMB");
@@ -88,9 +96,9 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
         )}
 
         {/* ================= ২. মেইন ৫টি প্রিমিয়াম ফুটবল টিভি থিম ================= */}
-        {activeGraphic === "LOWER_THIRD" && (
+        {activeGraphic === "LOWER_THIRD" && isScoreboardVisible && (
           <>
-            {/* THEME 1: PREMIER LEAGUE PRO (Top-Left Iconic Vibrant Purple) */}
+            {/* THEME 1: PREMIER LEAGUE PRO */}
             {activeTheme === "premier" && (
               <motion.div
                 key="theme-premier"
@@ -127,7 +135,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
               </motion.div>
             )}
 
-            {/* THEME 2: UEFA CHAMPIONS LEAGUE (Midnight Navy & Star Gold) */}
+            {/* THEME 2: UEFA CHAMPIONS LEAGUE */}
             {activeTheme === "ucl" && (
               <motion.div
                 key="theme-ucl"
@@ -161,7 +169,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
               </motion.div>
             )}
 
-            {/* THEME 3: FIFA WORLD CUP (Royal Burgundy) */}
+            {/* THEME 3: FIFA WORLD CUP */}
             {activeTheme === "fifa" && (
               <motion.div
                 key="theme-fifa"
@@ -193,7 +201,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
               </motion.div>
             )}
 
-            {/* THEME 4: LA LIGA CYBER (Matte Black & Coral) */}
+            {/* THEME 4: LA LIGA CYBER */}
             {activeTheme === "laliga" && (
               <motion.div
                 key="theme-laliga"
@@ -223,7 +231,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
               </motion.div>
             )}
 
-            {/* THEME 5: CLASSIC TOP-CENTER TV BAR */}
+            {/* THEME 5: CLASSIC TOP-CENTER */}
             {activeTheme === "classic" && (
               <motion.div
                 key="theme-classic"

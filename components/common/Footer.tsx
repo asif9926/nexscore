@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ShieldCheck, MessageCircle, Code2, ArrowUpRight } from "lucide-react";
+import { siteConfig } from "@/lib/config/site";
 
 export default function Footer() {
   const pathname = usePathname();
@@ -58,14 +59,14 @@ export default function Footer() {
               </Link>
               
               <a
-                href="https://wa.me/8801710256453"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex items-center gap-2 rounded-full border border-[#25D366]/20 bg-[#25D366]/10 px-4 py-1.5 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"
-              >
-                <MessageCircle size={14} className="group-hover:animate-pulse" />
-                <span>Developer Support</span>
-              </a>
+  href={siteConfig.developer.whatsappUrl}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="group flex items-center gap-2 rounded-full border border-[#25D366]/20 bg-[#25D366]/10 px-4 py-1.5 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"
+>
+  <MessageCircle size={14} className="group-hover:animate-pulse" />
+  <span>Developer Support</span>
+</a>
             </div>
 
           </div>

@@ -1,16 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // ম্যাচ হিস্ট্রি ও আর্কাইভ কালেকশন
-    match /matches_history/{documentId} {
+    // ম্যাচ হিস্ট্রি ও আর্কাইভ পাবলিক ভিউয়াররা পড়তে পারবে
+    match /matches_history/{document=**} {
       allow read: if true;
-      allow create, update, delete: if request.auth != null;
-    }
-
-    // ডিফল্ট রুল
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+      // ক্লায়েন্ট সাইড থেকে কোনো রাইট/আপডেট/ডিলিট সম্পূর্ণ নিষিদ্ধ
+      allow write: if false;
     }
   }
 }
