@@ -3,7 +3,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ref as dbRef, update } from "firebase/database";
-import { rtdb } from "@/lib/firebase/client"; // 👈 storage import বাদ দেওয়া হয়েছে
+import { rtdb } from "@/lib/firebase/client";
 import {
   Tv,
   Award,
@@ -111,55 +111,52 @@ export default function BroadcastControls({
     });
   };
 
-  // ⚡ ডিভাইস থেকে সরাসরি কম্প্রেস করে Base64 WebP তৈরি করার লজিক (৫-১০ কেবি)
-  const processImageToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 240;
-          const scale = MAX_WIDTH / img.width;
-          canvas.width = MAX_WIDTH;
-          canvas.height = img.height * scale;
-
-          const ctx = canvas.getContext("2d");
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          // অতি হালকা WebP ফরমেটে রূপান্তর
-          const base64 = canvas.toDataURL("image/webp", 0.8);
-          resolve(base64);
-        };
-        img.onerror = reject;
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // 🚀 সরাসরি ওয়ান-ক্লিকে RTDB-তে লোগো সেভ
+  // 🚀 Cloudinary Direct Upload Engine
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, side: "left" | "right") => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      showToast("Cloudinary environment variables are missing.", "error");
+      return;
+    }
+
     try {
       setUploadingSide(side);
-      const base64Data = await processImageToBase64(file);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", uploadPreset);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to upload image to Cloudinary");
+      }
+
+      const data = await res.json();
+      const secureUrl = data.secure_url;
 
       const field = side === "left" ? "customLogoLeftUrl" : "customLogoUrl";
 
       await update(dbRef(rtdb), {
-        [`matches/${matchId}/meta/${field}`]: base64Data,
+        [`matches/${matchId}/meta/${field}`]: secureUrl,
         [`matches/${matchId}/meta/updatedAt`]: Date.now(),
       });
 
-      showToast(`${side === "left" ? "Tournament" : "Channel"} logo updated instantly!`, "success");
+      showToast(`${side === "left" ? "Tournament" : "Channel"} logo uploaded!`, "success");
     } catch (error) {
-      console.error("Logo upload error:", error);
-      showToast("Failed to process logo.", "error");
+      console.error("Cloudinary logo upload error:", error);
+      showToast("Logo upload failed. Try again.", "error");
     } finally {
       setUploadingSide(null);
+      e.target.value = "";
     }
   };
 
