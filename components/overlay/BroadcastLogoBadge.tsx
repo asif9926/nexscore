@@ -1,32 +1,45 @@
 // components/overlay/BroadcastLogoBadge.tsx
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 
-export default function BroadcastLogoBadge({ matchId }: { matchId?: string }) {
-  const { matchData, loading } = useMatchData(matchId);
+interface Props {
+  matchId?: string;
+  matchData?: any;
+}
 
-  if (loading || !matchData?.meta || matchData.meta.showLogo === false) return null;
+export default function BroadcastLogoBadge({ matchId, matchData: propMatchData }: Props) {
+  const { matchData: fetchedMatchData, loading } = useMatchData(propMatchData ? undefined : matchId);
+  const matchData = propMatchData || fetchedMatchData;
+
+  const [leftImageError, setLeftImageError] = useState(false);
+  const [rightImageError, setRightImageError] = useState(false);
+
+  if ((!propMatchData && loading) || !matchData?.meta || matchData.meta.showLogo === false) {
+    return null;
+  }
 
   const { customLogoUrl, customLogoLeftUrl, sport, tournament } = matchData.meta as any;
   const isCricket = sport === "cricket";
 
   return (
-    <>
-      {/* 🔹 LEFT BUG: Tournament Logo */}
+    <div className="pointer-events-none fixed inset-0 z-40 select-none [transform:translateZ(0)]">
+      {/* 🔹 LEFT BUG: Tournament Logo (Cricket Only) */}
       {isCricket && (
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.35 }}
-          className="pointer-events-none fixed left-8 top-7 z-40 select-none drop-shadow-[0_8px_20px_rgba(0,0,0,0.85)]"
+          className="fixed left-8 top-7 drop-shadow-[0_8px_20px_rgba(0,0,0,0.85)]"
         >
-          {customLogoLeftUrl ? (
+          {customLogoLeftUrl && !leftImageError ? (
             <div className="flex h-11 min-w-[90px] max-w-[160px] items-center justify-center rounded-xl border border-white/20 bg-slate-950/85 px-3 py-1.5 backdrop-blur-md">
               <img
                 src={customLogoLeftUrl}
                 alt="Tournament Logo"
+                onError={() => setLeftImageError(true)}
                 className="h-full w-full object-contain drop-shadow"
               />
             </div>
@@ -46,18 +59,19 @@ export default function BroadcastLogoBadge({ matchId }: { matchId?: string }) {
         initial={{ opacity: 0, x: 15 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.35 }}
-        className="pointer-events-none fixed right-8 top-7 z-40 select-none drop-shadow-[0_8px_20px_rgba(0,0,0,0.85)]"
+        className="fixed right-8 top-7 drop-shadow-[0_8px_20px_rgba(0,0,0,0.85)]"
       >
-        {customLogoUrl ? (
+        {customLogoUrl && !rightImageError ? (
           <div className="flex h-11 min-w-[90px] max-w-[160px] items-center justify-center rounded-xl border border-white/20 bg-slate-950/85 px-3 py-1.5 backdrop-blur-md">
             <img
               src={customLogoUrl}
               alt="Channel Logo"
+              onError={() => setRightImageError(true)}
               className="h-full w-full object-contain drop-shadow"
             />
           </div>
         ) : (
-          <div className="chyron flex h-10 items-center gap-2 border-2 border-amber-400 bg-gradient-to-r from-slate-950 via-[#0d1527] to-slate-950 px-3.5 shadow-[0_8px_25px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+          <div className="flex h-10 items-center gap-2 rounded-xl border-2 border-amber-400 bg-gradient-to-r from-slate-950 via-[#0d1527] to-slate-950 px-3.5 shadow-[0_8px_25px_rgba(0,0,0,0.85)] backdrop-blur-xl">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-amber-400 to-orange-500 font-broadcast text-xs font-black text-slate-950 shadow">
               NS
             </div>
@@ -75,6 +89,6 @@ export default function BroadcastLogoBadge({ matchId }: { matchId?: string }) {
           </div>
         )}
       </motion.div>
-    </>
+    </div>
   );
 }

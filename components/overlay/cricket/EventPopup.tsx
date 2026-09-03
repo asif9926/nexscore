@@ -10,7 +10,7 @@ type Accent = "crimson" | "gold" | "electric" | "green";
 function accentFor(eventText: string): Accent {
   const upper = eventText.toUpperCase();
   if (["WICKET", "RED CARD"].some((k) => upper.includes(k))) return "crimson";
-  if (["SIX", "50", "100", "FIFTY", "CENTURY"].some((k) => upper.includes(k))) return "gold";
+  if (["SIX", "50", "100", "FIFTY", "CENTURY", "YELLOW CARD"].some((k) => upper.includes(k))) return "gold";
   if (upper.includes("GOAL")) return "green";
   return "electric";
 }
@@ -22,7 +22,6 @@ const accentMap: Record<Accent, { bg: string; border: string; glow: string; text
   green: { bg: "bg-emerald-500", border: "border-emerald-300", glow: "shadow-[0_0_80px_rgba(16,185,129,0.7)]", text: "text-slate-950", subText: "text-emerald-950 font-extrabold" },
 };
 
-// 🎯 ইভেন্টের টাইটেল ও সাব-হেডিং ফরম্যাটার
 function parseMilestone(eventRaw: string) {
   const raw = eventRaw.trim();
   const upper = raw.toUpperCase();
@@ -42,6 +41,15 @@ function parseMilestone(eventRaw: string) {
   if (upper === "FOUR") {
     return { title: "BOUNDARY!", subtitle: "4 RUNS" };
   }
+  if (upper === "GOAL") {
+    return { title: "GOAL!", subtitle: "SPECTACULAR FINISH" };
+  }
+  if (upper === "RED CARD") {
+    return { title: "RED CARD!", subtitle: "SENDING OFF" };
+  }
+  if (upper === "YELLOW CARD") {
+    return { title: "YELLOW CARD!", subtitle: "OFFICIAL BOOKING" };
+  }
 
   return { title: raw, subtitle: null };
 }
@@ -50,29 +58,41 @@ export default function EventPopup({ matchId }: { matchId?: string }) {
   const { matchData } = useMatchData(matchId);
   const [eventData, setEventData] = useState<{ text: string; id: string | number } | null>(null);
 
-  const lastProcessedEventRef = useRef<string | null>(null);
+  const lastProcessedEventKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const currentEvent = matchData?.meta?.currentEvent;
-
     if (!currentEvent) {
-      lastProcessedEventRef.current = null;
       setEventData(null);
       return;
     }
 
-    const eventTime = (matchData?.meta as any)?.eventTimestamp || matchData?.meta?.updatedAt || 0;
-    const eventKey = `${currentEvent}_${eventTime}`;
+    // ক্রিকেট ও ফুটবল ইভেন্টের নির্ভরযোগ্য টাইমস্ট্যাম্প সংগ্রহ
+    const recentBalls = matchData?.cricket?.currentInnings === 2 
+      ? matchData?.cricket?.innings2?.recentBalls 
+      : matchData?.cricket?.innings1?.recentBalls;
+    const latestCricketBallTime = Array.isArray(recentBalls) && recentBalls.length > 0 
+      ? (recentBalls[recentBalls.length - 1] as any)?.timestamp 
+      : 0;
 
-    if (lastProcessedEventRef.current === eventKey) {
+    const latestFootballEventTime = Array.isArray(matchData?.football?.events) && matchData.football.events.length > 0
+      ? matchData.football.events[matchData.football.events.length - 1]?.timestamp
+      : 0;
+
+    const eventMarkerTime = (matchData?.meta as any)?.eventTimestamp 
+      || latestCricketBallTime 
+      || latestFootballEventTime 
+      || matchData?.meta?.updatedAt 
+      || 0;
+
+    const eventKey = `${currentEvent}_${eventMarkerTime}`;
+
+    // একই ইভেন্ট বারবার লুপ হওয়া ঠেকানো
+    if (lastProcessedEventKeyRef.current === eventKey) {
       return;
     }
 
-    if (eventTime && Date.now() - eventTime > 5000) {
-      return;
-    }
-
-    lastProcessedEventRef.current = eventKey;
+    lastProcessedEventKeyRef.current = eventKey;
     setEventData({
       text: currentEvent,
       id: eventKey,
@@ -83,7 +103,7 @@ export default function EventPopup({ matchId }: { matchId?: string }) {
     }, 4000);
 
     return () => clearTimeout(timer);
-  }, [matchData?.meta?.currentEvent, (matchData?.meta as any)?.eventTimestamp]);
+  }, [matchData?.meta?.currentEvent, matchData?.cricket, matchData?.football?.events]);
 
   const accent = eventData ? accentMap[accentFor(eventData.text)] : null;
   const parsed = eventData ? parseMilestone(eventData.text) : null;
@@ -103,7 +123,7 @@ export default function EventPopup({ matchId }: { matchId?: string }) {
             initial={{ scale: 0.8 }}
             animate={{ scale: [0.8, 1.08, 1] }}
             transition={{ duration: 0.45 }}
-            className={`chyron flex flex-col items-center justify-center border-4 ${accent.border} ${accent.bg} ${accent.glow} min-w-[280px] px-16 py-6 text-center`}
+            className={`flex flex-col items-center justify-center border-4 ${accent.border} ${accent.bg} ${accent.glow} min-w-[320px] px-16 py-6 text-center shadow-2xl rounded-2xl`}
           >
             <span className={`font-score text-6xl italic uppercase tracking-widest md:text-8xl font-black ${accent.text}`}>
               {parsed.title}

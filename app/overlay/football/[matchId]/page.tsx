@@ -2,15 +2,14 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useMatchData } from "@/lib/hooks/useMatchData";
+import { MatchDataProvider, useMatchContext } from "@/lib/context/MatchDataContext";
+import OverlayThemeGuard from "@/components/overlay/OverlayThemeGuard";
 import FootballBroadcastEngine from "@/components/overlay/football/BroadcastEngine";
 import EventPopup from "@/components/overlay/cricket/EventPopup";
 import BroadcastLogoBadge from "@/components/overlay/BroadcastLogoBadge";
 
-export default function FootballOverlayPage() {
-  const params = useParams();
-  const matchId = params?.matchId as string;
-  const { matchData, loading } = useMatchData(matchId);
+function FootballOverlayInner() {
+  const { matchData, loading, matchId } = useMatchContext();
 
   if (loading || !matchData?.meta) {
     return null;
@@ -24,22 +23,32 @@ export default function FootballOverlayPage() {
 
   return (
     <main className="relative h-screen w-full overflow-hidden bg-transparent select-none">
-      {/* 🛡️ Layer 10: Football Broadcast Engine (Top Scorebar & Half-Time Cards) */}
       {shouldRenderEngine && (
         <div className="relative z-10 h-full w-full">
           <FootballBroadcastEngine matchId={matchId} theme={activeTheme} />
         </div>
       )}
 
-      {/* 🛡️ Layer 30: Channel Watermark & League Logos */}
       <div className="pointer-events-none relative z-30">
         <BroadcastLogoBadge matchId={matchId} />
       </div>
 
-      {/* 🛡️ Layer 50: Goal & Card Event Popups */}
       <div className="pointer-events-none relative z-50">
         <EventPopup matchId={matchId} />
       </div>
     </main>
+  );
+}
+
+export default function FootballOverlayPage() {
+  const params = useParams();
+  const matchId = (params?.matchId as string) || "";
+
+  return (
+    <OverlayThemeGuard>
+      <MatchDataProvider matchId={matchId}>
+        <FootballOverlayInner />
+      </MatchDataProvider>
+    </OverlayThemeGuard>
   );
 }

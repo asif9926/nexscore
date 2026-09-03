@@ -1,29 +1,34 @@
+// components/public-view/tabs/SquadsTab.tsx
 "use client";
 
 import { MatchData } from "@/lib/types/match";
+import { safeArray } from "@/lib/utils";
 
 export default function SquadsTab({ matchData }: { matchData: MatchData }) {
-  const { meta, cricket, football } = matchData;
-  const isCricket = meta.sport === "cricket";
+  const { meta, cricket, football } = matchData || {};
+  const isCricket = meta?.sport === "cricket";
 
-  const squadA = isCricket ? cricket?.squads?.teamA : football?.squads?.teamA;
-  const squadB = isCricket ? cricket?.squads?.teamB : football?.squads?.teamB;
+  // 🛡️ safeArray গার্ড: Firebase অবজেক্ট রিটার্ন করলেও অ্যাপ ক্র্যাশ করবে না
+  const squadA = safeArray(isCricket ? cricket?.squads?.teamA : football?.squads?.teamA);
+  const squadB = safeArray(isCricket ? cricket?.squads?.teamB : football?.squads?.teamB);
 
   const renderSquad = (squad: any[], teamName: string, accent: "electric" | "signal-gold", emoji: string) => (
     <div className="space-y-4 rounded-3xl border border-border bg-panel p-6 shadow-xl">
       <div className="flex items-center gap-3 border-b border-border pb-3">
         <span className="text-2xl">{emoji}</span>
         <div>
-          <h3 className={`text-base font-bold ${accent === "electric" ? "text-electric" : "text-signal-gold"}`}>{teamName}</h3>
-          <span className="text-xs text-fg-muted">Playing XI Lineup</span>
+          <h3 className={`text-base font-bold ${accent === "electric" ? "text-electric" : "text-signal-gold"}`}>
+            {teamName}
+          </h3>
+          <span className="text-xs text-fg-muted">Playing XI Lineup ({squad.length})</span>
         </div>
       </div>
 
       <div className="max-h-[500px] space-y-2 overflow-y-auto pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {squad && squad.length > 0 ? (
+        {squad.length > 0 ? (
           squad.map((player: any, idx: number) => (
             <div
-              key={player.id}
+              key={player.id || idx}
               className="flex items-center justify-between rounded-2xl border border-border bg-ink p-3 text-xs transition-colors hover:bg-panel-raised"
             >
               <div className="flex items-center gap-2.5">
@@ -34,7 +39,7 @@ export default function SquadsTab({ matchData }: { matchData: MatchData }) {
                     C
                   </span>
                 )}
-                {player.isWicketKeeper && (
+                {isCricket && player.isWicketKeeper && (
                   <span className="rounded border border-electric/30 bg-electric/15 px-1.5 py-0.5 text-[10px] font-bold text-electric shadow-sm">
                     WK
                   </span>
@@ -52,8 +57,8 @@ export default function SquadsTab({ matchData }: { matchData: MatchData }) {
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-      {renderSquad(squadA || [], meta.teamA, "electric", isCricket ? "🏏" : "👑")}
-      {renderSquad(squadB || [], meta.teamB, "signal-gold", isCricket ? "⚡" : "🔴")}
+      {renderSquad(squadA, meta?.teamA || "Team A", "electric", isCricket ? "🏏" : "👑")}
+      {renderSquad(squadB, meta?.teamB || "Team B", "signal-gold", isCricket ? "⚡" : "🔴")}
     </div>
   );
 }

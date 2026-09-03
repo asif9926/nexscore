@@ -11,12 +11,14 @@ interface Props {
   theme?: string;
 }
 
-// 🛡️ CRASH FIX: একাধিক স্পেস বা অস্বাভাবিক নাম থাকলেও ক্র্যাশ করবে না
-const getShortName = (name?: string, fallback = "TM") => {
+const getTricode = (name?: string, fallback = "TMA") => {
   if (!name) return fallback;
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2 && parts[0]?.[0] && parts[1]?.[0]) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts.length >= 3) {
+    return (parts[0][0] + parts[1][0] + parts[2][0]).toUpperCase();
+  }
+  if (parts.length === 2 && parts[0]?.length && parts[1]?.length) {
+    return (parts[0].slice(0, 2) + parts[1][0]).toUpperCase();
   }
   return name.slice(0, 3).toUpperCase();
 };
@@ -33,21 +35,20 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
   const activeGraphic = meta.activeGraphic || "LOWER_THIRD";
   const activeTheme = theme || meta.activeTheme || "premier";
 
-  // 🛡️ VISIBILITY FIX: স্কোরবোর্ড অফ থাকলেও হাফ-টাইম পোস্টার দেখতে পাওয়া যাবে
   const isScoreboardVisible = meta.showScoreboard !== false;
   const hasSpecialGraphic = activeGraphic !== "LOWER_THIRD";
   if (!isScoreboardVisible && !hasSpecialGraphic) {
     return null;
   }
 
-  const teamACode = getShortName(meta.teamA, "TMA");
-  const teamBCode = getShortName(meta.teamB, "TMB");
+  const teamACode = getTricode(meta.teamA, "TMA");
+  const teamBCode = getTricode(meta.teamB, "TMB");
 
   const halfData = football.currentHalf === 2 ? football.half2 : football.half1;
   const possession = halfData?.possession || { teamA: 50, teamB: 50 };
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-30 font-sans select-none">
+    <div className="pointer-events-none fixed inset-0 z-30 font-sans select-none [transform:translateZ(0)]">
       <AnimatePresence mode="wait">
         {/* ================= ১. HALF TIME / MATCH SUMMARY POSTER ================= */}
         {activeGraphic === "INNINGS_BREAK" && (
@@ -110,7 +111,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                 <div className="flex h-[56px] items-stretch overflow-hidden rounded-xl border border-purple-500/50 bg-[#38003c] shadow-[0_12px_35px_rgba(0,0,0,0.85)]">
                   <div className="flex min-w-[75px] items-center justify-center gap-1.5 bg-[#260029] px-4 font-broadcast text-2xl font-black text-white">
                     <span>{teamACode}</span>
-                    {football.redCardsA > 0 && <span className="h-3.5 w-2.5 rounded-xs bg-rose-600 shadow-sm" />}
+                    {football.redCardsA > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-rose-600 shadow-sm" />}
                   </div>
 
                   <div className="flex items-center justify-center bg-[#00ff87] px-4 font-score text-3xl font-black text-[#38003c]">
@@ -120,7 +121,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                   </div>
 
                   <div className="flex min-w-[75px] items-center justify-center gap-1.5 bg-[#260029] px-4 font-broadcast text-2xl font-black text-white">
-                    {football.redCardsB > 0 && <span className="h-3.5 w-2.5 rounded-xs bg-rose-600 shadow-sm" />}
+                    {football.redCardsB > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-rose-600 shadow-sm" />}
                     <span>{teamBCode}</span>
                   </div>
 
@@ -147,7 +148,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                 <div className="flex h-[56px] items-stretch overflow-hidden rounded-2xl border-2 border-amber-400/80 bg-[#000f2e] shadow-[0_12px_40px_rgba(0,15,46,0.9)]">
                   <div className="flex min-w-[75px] items-center justify-center gap-1 bg-[#00081a] px-4 font-broadcast text-2xl font-black text-white">
                     <span>{teamACode}</span>
-                    {football.redCardsA > 0 && <span className="h-3.5 w-2.5 bg-rose-600" />}
+                    {football.redCardsA > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-rose-600" />}
                   </div>
 
                   <div className="flex items-center justify-center border-x border-amber-400/40 bg-[#001744] px-5 font-score text-3xl font-bold text-amber-400">
@@ -157,7 +158,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                   </div>
 
                   <div className="flex min-w-[75px] items-center justify-center gap-1 bg-[#00081a] px-4 font-broadcast text-2xl font-black text-white">
-                    {football.redCardsB > 0 && <span className="h-3.5 w-2.5 bg-rose-600" />}
+                    {football.redCardsB > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-rose-600" />}
                     <span>{teamBCode}</span>
                   </div>
 
@@ -181,7 +182,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                 <div className="flex h-[56px] items-stretch overflow-hidden rounded-xl border border-white/20 bg-[#8a1538] shadow-[0_12px_35px_rgba(0,0,0,0.8)]">
                   <div className="flex min-w-[80px] items-center justify-center gap-1.5 bg-[#5c0d24] px-4 font-broadcast text-2xl font-black text-white">
                     <span>{teamACode}</span>
-                    {football.redCardsA > 0 && <span className="h-3.5 w-2.5 rounded-xs bg-rose-500" />}
+                    {football.redCardsA > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-rose-500" />}
                   </div>
 
                   <div className="flex items-center justify-center bg-white px-5 font-score text-3xl font-black text-[#8a1538]">
@@ -189,7 +190,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                   </div>
 
                   <div className="flex min-w-[80px] items-center justify-center gap-1.5 bg-[#5c0d24] px-4 font-broadcast text-2xl font-black text-white">
-                    {football.redCardsB > 0 && <span className="h-3.5 w-2.5 rounded-xs bg-rose-500" />}
+                    {football.redCardsB > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-rose-500" />}
                     <span>{teamBCode}</span>
                   </div>
 
@@ -201,7 +202,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
               </motion.div>
             )}
 
-            {/* THEME 4: LA LIGA CYBER */}
+            {/* THEME 4: LA LIGA CYBER (Fixed Red Card Indicators) */}
             {activeTheme === "laliga" && (
               <motion.div
                 key="theme-laliga"
@@ -210,17 +211,19 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                 exit={{ y: -80, opacity: 0 }}
                 className="fixed top-8 left-8"
               >
-                <div className="chyron flex h-[56px] items-stretch border-2 border-[#ff3b4e] bg-[#0c0d12] shadow-[0_0_30px_rgba(255,59,78,0.3)]">
-                  <div className="flex min-w-[75px] items-center justify-center bg-[#ff3b4e] px-4 font-broadcast text-2xl font-black text-white">
-                    {teamACode}
+                <div className="flex h-[56px] items-stretch border-2 border-[#ff3b4e] bg-[#0c0d12] shadow-[0_0_30px_rgba(255,59,78,0.3)] rounded-lg overflow-hidden">
+                  <div className="flex min-w-[75px] items-center justify-center gap-1.5 bg-[#ff3b4e] px-4 font-broadcast text-2xl font-black text-white">
+                    <span>{teamACode}</span>
+                    {football.redCardsA > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-slate-950 border border-white/40" />}
                   </div>
 
                   <div className="flex items-center justify-center px-5 font-score text-3xl font-black text-white">
                     {football.scoreA} : {football.scoreB}
                   </div>
 
-                  <div className="flex min-w-[75px] items-center justify-center bg-[#1a1c24] px-4 font-broadcast text-2xl font-black text-slate-300">
-                    {teamBCode}
+                  <div className="flex min-w-[75px] items-center justify-center gap-1.5 bg-[#1a1c24] px-4 font-broadcast text-2xl font-black text-slate-300">
+                    {football.redCardsB > 0 && <span className="h-3.5 w-2.5 rounded-[2px] bg-rose-600" />}
+                    <span>{teamBCode}</span>
                   </div>
 
                   <div className="flex flex-col justify-center bg-[#0c0d12] px-4 border-l border-slate-800">
@@ -243,7 +246,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                 <div className="flex h-[56px] items-stretch overflow-hidden rounded-full border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-md">
                   <div className="flex items-center gap-2 px-6 font-broadcast text-2xl font-bold uppercase text-white">
                     <span>{meta.teamA}</span>
-                    {football.redCardsA > 0 && <span className="h-3 w-2 rounded-xs bg-rose-600" />}
+                    {football.redCardsA > 0 && <span className="h-3 w-2 rounded-[2px] bg-rose-600" />}
                   </div>
 
                   <div className="flex items-center bg-emerald-600 px-6 font-score text-4xl font-black text-white">
@@ -251,7 +254,7 @@ export default function FootballBroadcastEngine({ matchId, theme = "premier" }: 
                   </div>
 
                   <div className="flex items-center gap-2 px-6 font-broadcast text-2xl font-bold uppercase text-white">
-                    {football.redCardsB > 0 && <span className="h-3 w-2 rounded-xs bg-rose-600" />}
+                    {football.redCardsB > 0 && <span className="h-3 w-2 rounded-[2px] bg-rose-600" />}
                     <span>{meta.teamB}</span>
                   </div>
 

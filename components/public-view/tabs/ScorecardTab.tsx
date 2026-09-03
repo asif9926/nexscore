@@ -1,31 +1,24 @@
 // components/public-view/tabs/ScorecardTab.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MatchData, Batsman, Bowler, FallOfWicket } from "@/lib/types/match";
 import { FileText, Trophy, Target } from "lucide-react";
-import { safeArray } from "@/lib/utils";
-
-const oversToDecimal = (oversStr?: string) => {
-  if (!oversStr) return 0;
-  const [o, b] = oversStr.split(".").map(Number);
-  return (o || 0) + (b || 0) / 6;
-};
-
-const calculateSR = (runs: number, balls: number) => (balls > 0 ? ((runs / balls) * 100).toFixed(1) : "0.0");
-
-const calculateEcon = (runs: number, oversStr: string) => {
-  const overs = oversToDecimal(oversStr);
-  return overs > 0 ? (runs / overs).toFixed(2) : "0.00";
-};
+import { safeArray, calculateSR, calculateEconomy } from "@/lib/utils";
 
 export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
-  const { meta, cricket, football } = matchData;
+  const { meta, cricket, football } = matchData || {};
 
-  // 🛡️ FIX: সব React Hooks অবশ্যই সব Conditional Return-এর শীর্ষে থাকতে হবে
   const [activeInningsTab, setActiveInningsTab] = useState<1 | 2>(cricket?.currentInnings || 1);
 
-  if (meta.sport !== "cricket" || !cricket) {
+  // 🛡️ লাইভ ম্যাচ ২য় ইনিংসে পৌঁছালে স্বয়ংক্রিয়ভাবে ট্যাব সিঙ্ক
+  useEffect(() => {
+    if (cricket?.currentInnings) {
+      setActiveInningsTab(cricket.currentInnings);
+    }
+  }, [cricket?.currentInnings]);
+
+  if (meta?.sport !== "cricket" || !cricket) {
     const half1 = football?.half1 || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
     const half2 = football?.half2 || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
     const allEvents = football?.events || [];
@@ -45,7 +38,7 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="rounded-xl border border-border bg-ink p-4 space-y-2.5">
               <div className="font-bold text-electric text-xs uppercase tracking-wider flex justify-between">
-                <span>{meta.teamA}</span>
+                <span>{meta?.teamA}</span>
                 <span>{goalsTeamA.length} Goals</span>
               </div>
               {goalsTeamA.length === 0 ? (
@@ -66,7 +59,7 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
 
             <div className="rounded-xl border border-border bg-ink p-4 space-y-2.5">
               <div className="font-bold text-signal-gold text-xs uppercase tracking-wider flex justify-between">
-                <span>{meta.teamB}</span>
+                <span>{meta?.teamB}</span>
                 <span>{goalsTeamB.length} Goals</span>
               </div>
               {goalsTeamB.length === 0 ? (
@@ -100,11 +93,11 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
                 <span>Possession: {half1.possession.teamA}% - {half1.possession.teamB}%</span>
               </div>
               <div className="flex justify-between items-center text-fg font-semibold pt-1">
-                <span>{meta.teamA}</span>
+                <span>{meta?.teamA}</span>
                 <span className="font-score text-lg text-electric">{half1.goalsA}</span>
               </div>
               <div className="flex justify-between items-center text-fg font-semibold">
-                <span>{meta.teamB}</span>
+                <span>{meta?.teamB}</span>
                 <span className="font-score text-lg text-signal-gold">{half1.goalsB}</span>
               </div>
             </div>
@@ -115,11 +108,11 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
                 <span>Possession: {half2.possession.teamA}% - {half2.possession.teamB}%</span>
               </div>
               <div className="flex justify-between items-center text-fg font-semibold pt-1">
-                <span>{meta.teamA}</span>
+                <span>{meta?.teamA}</span>
                 <span className="font-score text-lg text-electric">{half2.goalsA}</span>
               </div>
               <div className="flex justify-between items-center text-fg font-semibold">
-                <span>{meta.teamB}</span>
+                <span>{meta?.teamB}</span>
                 <span className="font-score text-lg text-signal-gold">{half2.goalsB}</span>
               </div>
             </div>
@@ -133,13 +126,13 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
           </h3>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="rounded-xl border border-border bg-ink p-3 text-center space-y-1">
-              <div className="font-bold text-fg">{meta.teamA}</div>
+              <div className="font-bold text-fg">{meta?.teamA}</div>
               <div className="text-fg-muted">
                 🟨 Yellow: <strong className="text-signal-gold">{football?.yellowCardsA || 0}</strong> • 🟥 Red: <strong className="text-crimson">{football?.redCardsA || 0}</strong>
               </div>
             </div>
             <div className="rounded-xl border border-border bg-ink p-3 text-center space-y-1">
-              <div className="font-bold text-fg">{meta.teamB}</div>
+              <div className="font-bold text-fg">{meta?.teamB}</div>
               <div className="text-fg-muted">
                 🟨 Yellow: <strong className="text-signal-gold">{football?.yellowCardsB || 0}</strong> • 🟥 Red: <strong className="text-crimson">{football?.redCardsB || 0}</strong>
               </div>
@@ -152,6 +145,16 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
 
   const inn1 = cricket.innings1;
   const inn2 = cricket.innings2;
+
+  // 🛡️ ২য় ইনিংস শুরু হয়েছে কি না যাচাই
+  const hasSecondInningsStarted = 
+    cricket.currentInnings === 2 || 
+    (Boolean(inn2) && (
+      (inn2?.score || 0) > 0 || 
+      (Boolean(inn2?.overs) && inn2?.overs !== "0.0") || 
+      safeArray(inn2?.batsmen).length > 0
+    ));
+
   const displayedInnings = activeInningsTab === 1 ? inn1 : inn2;
 
   const battingTeamName = displayedInnings?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
@@ -179,15 +182,15 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
         </button>
 
         <button
-          onClick={() => setActiveInningsTab(2)}
-          disabled={!inn2}
+          onClick={() => hasSecondInningsStarted && setActiveInningsTab(2)}
+          disabled={!hasSecondInningsStarted}
           className={`min-h-[44px] rounded-full px-5 py-2.5 text-xs font-bold transition-all sm:text-sm ${
             activeInningsTab === 2
               ? "bg-electric text-white shadow-lg shadow-electric/20"
               : "border border-border bg-panel text-fg-muted hover:text-fg"
-          } ${!inn2 ? "cursor-not-allowed opacity-50" : ""}`}
+          } ${!hasSecondInningsStarted ? "cursor-not-allowed opacity-50" : ""}`}
         >
-          2nd Inn: {inn2 ? `${inn2.score}/${inn2.wickets}` : "Yet to bat"}
+          2nd Inn: {hasSecondInningsStarted ? `${inn2?.score || 0}/${inn2?.wickets || 0}` : "Yet to bat"}
         </button>
       </div>
 
@@ -206,7 +209,7 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
         {/* Mobile View */}
         <div className="divide-y divide-border sm:hidden">
           {batsmenList.length === 0 ? (
-            <div className="py-6 text-center text-xs text-fg-faint">কোনো ব্যাটারের ডেটা নেই</div>
+            <div className="py-6 text-center text-xs text-fg-faint">কোনো ব্যাটারের তথ্য নেই</div>
           ) : (
             batsmenList.map((b) => (
               <div key={b.id} className="flex items-center justify-between p-3.5 transition-colors hover:bg-panel-raised/30">
@@ -258,7 +261,7 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
               {batsmenList.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-6 text-center text-fg-faint">
-                    কোনো ব্যাটারের ডেটা নেই
+                    কোনো ব্যাটারের তথ্য নেই
                   </td>
                 </tr>
               ) : (
@@ -336,7 +339,7 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
               {bowlersList.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-fg-faint">
-                    কোনো বোলারের ডেটা নেই
+                    কোনো বোলারের তথ্য নেই
                   </td>
                 </tr>
               ) : (
@@ -354,7 +357,7 @@ export default function ScorecardTab({ matchData }: { matchData: MatchData }) {
                     <td className="p-3.5 text-right font-mono text-fg-muted">{b.maidens}</td>
                     <td className="p-3.5 text-right font-mono text-fg-muted">{b.runs}</td>
                     <td className="p-3.5 text-right font-broadcast text-base font-bold text-crimson">{b.wickets}</td>
-                    <td className="p-3.5 pr-6 text-right font-mono text-fg-muted">{calculateEcon(b.runs, b.overs)}</td>
+                    <td className="p-3.5 pr-6 text-right font-mono text-fg-muted">{calculateEconomy(b.runs, b.overs)}</td>
                   </tr>
                 ))
               )}

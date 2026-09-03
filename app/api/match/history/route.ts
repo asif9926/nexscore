@@ -9,27 +9,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const createdBy = searchParams.get("createdBy");
 
-    let snapshot;
+    let query: FirebaseFirestore.Query = adminFirestore.collection("matches_history");
 
-    // 🛡️ যদি কোনো নির্দিষ্ট অ্যাডমিন তার নিজের ম্যাচ চায়
+    // 🛡️ ফায়ারস্টোর লিমিট ও মেমোরি ব্লোট প্রতিরোধ
     if (createdBy) {
-      snapshot = await adminFirestore
-        .collection("matches_history")
-        .where("createdBy", "==", createdBy)
-        .get();
+      query = query.where("createdBy", "==", createdBy).limit(50);
     } else {
-      snapshot = await adminFirestore
-        .collection("matches_history")
-        .orderBy("completedAt", "desc")
-        .limit(50)
-        .get();
+      query = query.orderBy("completedAt", "desc").limit(50);
     }
+
+    const snapshot = await query.get();
 
     if (snapshot.empty) {
       return NextResponse.json({ success: true, matches: [] });
     }
 
-    let matches = snapshot.docs.map((doc: any) => {
+    const matches = snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -46,7 +41,6 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // ইন-মেমোরি ডিসেন্ডিং সর্ট (ফায়ারস্টোর ইনডেক্স এরর ছাড়া দ্রুতগতিতে লোড হবে)
     matches.sort((a: any, b: any) => (b.completedAt || 0) - (a.completedAt || 0));
 
     return NextResponse.json({ success: true, matches });

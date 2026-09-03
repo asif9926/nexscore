@@ -1,7 +1,8 @@
+// components/admin/FootballGoalModal.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { Goal, Sparkles, UserCheck } from "lucide-react";
+import { Goal } from "lucide-react";
 import ResponsiveModal from "@/components/common/ResponsiveModal";
 import type { Player } from "@/lib/types/match";
 import { useToast } from "@/lib/context/ToastContext";
@@ -36,11 +37,19 @@ export default function FootballGoalModal({
 
   useEffect(() => {
     if (isOpen) {
-      setMinute(currentMinute || 1);
+      setMinute(Math.max(1, Math.min(130, currentMinute || 1)));
       setScorerId("");
       setAssistId("");
     }
   }, [isOpen, currentMinute]);
+
+  // 🛡️ গোলদাতা ও অ্যাসিস্টকারী যেন একই ব্যক্তি না হয়
+  const handleScorerSelect = (id: string) => {
+    setScorerId(id);
+    if (assistId === id) {
+      setAssistId("");
+    }
+  };
 
   const handleSubmit = () => {
     if (!scorerId) {
@@ -50,12 +59,14 @@ export default function FootballGoalModal({
     const scorer = squad.find((p) => p.id === scorerId);
     const assist = squad.find((p) => p.id === assistId);
 
+    const validMinute = Math.max(1, Math.min(130, Number(minute) || 1));
+
     onConfirm({
       scorerId,
       scorerName: scorer?.name || "Player",
       assistId: assist ? assist.id : undefined,
       assistName: assist ? assist.name : undefined,
-      minute: Number(minute) || 1,
+      minute: validMinute,
     });
 
     onClose();
@@ -71,12 +82,14 @@ export default function FootballGoalModal({
       footer={
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={!scorerId}
             className="min-h-[44px] flex-1 rounded-xl bg-pitch-green px-5 py-2.5 text-xs font-bold text-ink shadow-lg shadow-pitch-green/20 transition-opacity hover:opacity-90 disabled:opacity-40"
@@ -98,10 +111,10 @@ export default function FootballGoalModal({
               min={1}
               max={130}
               value={minute}
-              onChange={(e) => setMinute(Number(e.target.value))}
+              onChange={(e) => setMinute(Math.max(1, Math.min(130, Number(e.target.value) || 1)))}
               className="min-h-[42px] w-28 rounded-xl border border-border bg-ink p-2.5 text-center font-mono text-base font-bold text-pitch-green outline-none focus:border-pitch-green"
             />
-            <span className="text-xs text-fg-muted">Minute of Goal</span>
+            <span className="text-xs text-fg-muted">Minute of Goal (1 - 130)</span>
           </div>
         </div>
 
@@ -110,23 +123,27 @@ export default function FootballGoalModal({
           <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-fg-muted">
             Goal Scorer *
           </label>
-          <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
-            {squad.map((player) => (
-              <button
-                key={player.id}
-                type="button"
-                onClick={() => setScorerId(player.id)}
-                className={`flex min-h-[44px] flex-col justify-center rounded-xl border-2 p-2 text-left text-xs transition-all ${
-                  scorerId === player.id
-                    ? "border-pitch-green bg-pitch-green/20 text-pitch-green font-bold shadow-sm"
-                    : "border-border bg-ink text-fg hover:border-fg-faint"
-                }`}
-              >
-                <span className="truncate">{player.name}</span>
-                <span className="text-[10px] text-fg-muted font-normal uppercase">{player.role}</span>
-              </button>
-            ))}
-          </div>
+          {squad.length === 0 ? (
+            <p className="text-xs text-fg-faint italic p-3 bg-ink rounded-xl border border-border">স্কোয়াডে কোনো খেলোয়াড় নেই</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+              {squad.map((player) => (
+                <button
+                  key={player.id}
+                  type="button"
+                  onClick={() => handleScorerSelect(player.id)}
+                  className={`flex min-h-[44px] flex-col justify-center rounded-xl border-2 p-2 text-left text-xs transition-all ${
+                    scorerId === player.id
+                      ? "border-pitch-green bg-pitch-green/20 text-pitch-green font-bold shadow-sm"
+                      : "border-border bg-ink text-fg hover:border-fg-faint"
+                  }`}
+                >
+                  <span className="truncate">{player.name}</span>
+                  <span className="text-[10px] text-fg-muted font-normal uppercase">{player.role}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Assist Provider Selection */}

@@ -1,3 +1,4 @@
+// lib/firebase/admin.ts
 import { initializeApp, getApps, cert, getApp, App } from "firebase-admin/app";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { getAuth, Auth } from "firebase-admin/auth";
@@ -14,9 +15,17 @@ function getPrivateKey(): string | undefined {
   return cleanKey.replace(/\\n/g, "\n");
 }
 
+let adminAppInstance: App | null = null;
+let firestoreInstance: Firestore | null = null;
+let authInstance: Auth | null = null;
+let rtdbInstance: Database | null = null;
+
 export function getAdminApp(): App {
+  if (adminAppInstance) return adminAppInstance;
+
   if (getApps().length > 0) {
-    return getApp();
+    adminAppInstance = getApp();
+    return adminAppInstance;
   }
 
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
@@ -29,7 +38,7 @@ export function getAdminApp(): App {
     );
   }
 
-  return initializeApp({
+  adminAppInstance = initializeApp({
     credential: cert({
       projectId,
       clientEmail,
@@ -37,26 +46,52 @@ export function getAdminApp(): App {
     }),
     databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
   });
+
+  return adminAppInstance;
 }
 
-// 🔒 আইসোলেটেড লেজি প্রক্সি (যাতে একটির কারণে অন্য সার্ভিস ক্র্যাশ না করে)
+export function getAdminFirestore(): Firestore {
+  if (!firestoreInstance) {
+    firestoreInstance = getFirestore(getAdminApp());
+  }
+  return firestoreInstance;
+}
+
+export function getAdminAuth(): Auth {
+  if (!authInstance) {
+    authInstance = getAuth(getAdminApp());
+  }
+  return authInstance;
+}
+
+export function getAdminRtdb(): Database {
+  if (!rtdbInstance) {
+    rtdbInstance = getDatabase(getAdminApp());
+  }
+  return rtdbInstance;
+}
+
+// 🔒 আইসোলেটেড লেজি প্রক্সি + `this` Context মেথড বাইন্ডিং (Zero-Crash Guarantee)
 export const adminFirestore = new Proxy({} as Firestore, {
   get: (_, prop: string | symbol) => {
-    const firestore = getFirestore(getAdminApp());
-    return (firestore as any)[prop];
+    const instance = getAdminFirestore();
+    const value = (instance as any)[prop];
+    return typeof value === "function" ? value.bind(instance) : value;
   },
 });
 
 export const adminAuth = new Proxy({} as Auth, {
   get: (_, prop: string | symbol) => {
-    const auth = getAuth(getAdminApp());
-    return (auth as any)[prop];
+    const instance = getAdminAuth();
+    const value = (instance as any)[prop];
+    return typeof value === "function" ? value.bind(instance) : value;
   },
 });
 
 export const adminRtdb = new Proxy({} as Database, {
   get: (_, prop: string | symbol) => {
-    const rtdb = getDatabase(getAdminApp());
-    return (rtdb as any)[prop];
+    const instance = getAdminRtdb();
+    const value = (instance as any)[prop];
+    return typeof value === "function" ? value.bind(instance) : value;
   },
 });

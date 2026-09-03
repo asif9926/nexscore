@@ -1,3 +1,4 @@
+// app/api/login/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase/admin";
 
@@ -25,10 +26,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Token is missing" }, { status: 400 });
     }
 
+    // ১৪ দিনের সিকিউর সেশন কুকি
     const expiresIn = 14 * 24 * 60 * 60 * 1000;
     const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
 
-    const response = NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true, message: "Authentication successful" });
 
     response.cookies.set("AuthToken", sessionCookie, {
       maxAge: expiresIn / 1000,
@@ -41,6 +43,6 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (err: any) {
     console.error("Session Cookie Error:", err);
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ success: false, error: "Unauthorized access" }, { status: 401 });
   }
 }

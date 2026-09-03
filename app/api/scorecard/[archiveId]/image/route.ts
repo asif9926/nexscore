@@ -1,16 +1,20 @@
 // app/api/scorecard/[archiveId]/image/route.ts
-import { ImageResponse } from "@vercel/og";
+import { ImageResponse } from "next/og";
 import { adminFirestore } from "@/lib/firebase/admin";
 import { NextRequest } from "next/server";
 import React from "react";
+import { getMaxWickets, oversToDecimal } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ archiveId: string }> }) {
   try {
     const { archiveId } = await params;
+    if (!archiveId) {
+      return new Response("Missing archiveId parameter", { status: 400 });
+    }
+
     const docRef = await adminFirestore.collection("matches_history").doc(archiveId).get();
-    
     if (!docRef.exists) {
       return new Response("Match archive not found", { status: 404 });
     }
@@ -26,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
     const cricketSnap = match.cricket || match.fullSnapshot?.cricket;
     const footballSnap = match.football || match.fullSnapshot?.football;
 
-    // 🛡️ ১. ডেটাবেজে সংরক্ষিত অফিশিয়াল ফাইনাল রেজাল্টকে ১ নম্বর প্রাধান্য দেওয়া
+    // 🛡️ ১. ডাটাবেসে সংরক্ষিত অফিসিয়াল রেজাল্ট অগ্রাধিকার পাবে
     const savedResult = match.finalResult || match.fullSnapshot?.meta?.finalResult;
     let resultText = savedResult && savedResult !== "Match Completed" ? savedResult : "MATCH COMPLETED";
 
@@ -48,12 +52,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
       inn2Score = inn2 ? `${inn2.score || 0}/${inn2.wickets || 0}` : "DNB";
       inn2Overs = inn2?.overs || "0.0";
 
-      const targetScore = (inn1?.score || 0) + 1;
+      // 🛡️ DLS সংশোধিত টার্গেট সাপোর্ট
+      const targetScore = inn2?.target || (inn1?.score || 0) + 1;
       const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
       const squadCount = cricketSnap.squads?.[chasingSquadKey]?.length || 11;
-      const maxWickets = Math.max(1, squadCount - 1);
+      const maxWickets = getMaxWickets(squadCount);
 
-      // যদি ফায়ারস্টোরে আগে থেকে রেজাল্ট না থাকে, তখন ডায়নামিক ক্যালকুলেট হবে
       if (!savedResult || savedResult === "Match Completed") {
         if (!inn2 || (!inn2.overs && inn2.score === 0) || inn2.overs === "0.0") {
           resultText = `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} (${inn1?.overs || "0.0"} ov) • Match Incomplete`;
@@ -61,11 +65,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
           const wicketsLeft = Math.max(0, maxWickets - (inn2.wickets || 0));
           resultText = `🏆 ${inn2Team.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
         } else {
-          const [o] = (inn2.overs || "0.0").split(".").map(Number);
-          const isInn2Finished = inn2.isCompleted || o >= maxOvers || (inn2.wickets || 0) >= maxWickets;
+          const oversDec = oversToDecimal(inn2.overs);
+          const isInn2Finished = inn2.isCompleted || oversDec >= maxOvers || (inn2.wickets || 0) >= maxWickets;
 
           if (isInn2Finished) {
-            const runMargin = (inn1?.score || 0) - inn2.score;
+            const runMargin = Math.max(0, targetScore - 1 - (inn2?.score || 0));
             if (runMargin > 0) {
               resultText = `🏆 ${inn1Team.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
             } else if (runMargin === 0) {
@@ -188,19 +192,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
                     "div",
                     { key: "fa", style: { display: "flex", flexDirection: "column", alignItems: "center", width: "35%" } },
                     [
-                      React.createElement("span", { key: "fan", style: { color: "#EAEDF5", fontSize: "36px", fontWeight: "900" } }, teamA),
+                      React.createElement("span", { key: "fan", style: { color: "#EAEDF5", fontSize: "36px", fontWeight: "900", textAlign: "center" } }, teamA),
                     ]
                   ),
                   React.createElement(
                     "div",
-                    { key: "fscore", style: { display: "flex", alignItems: "baseline", color: "#17C980", fontSize: "80px", fontWeight: "900" } },
+                    { key: "fscore", style: { display: "flex", alignItems: "baseline", color: "#10b981", fontSize: "80px", fontWeight: "900" } },
                     `${footballScoreA} - ${footballScoreB}`
                   ),
                   React.createElement(
                     "div",
                     { key: "fb", style: { display: "flex", flexDirection: "column", alignItems: "center", width: "35%" } },
                     [
-                      React.createElement("span", { key: "fbn", style: { color: "#EAEDF5", fontSize: "36px", fontWeight: "900" } }, teamB),
+                      React.createElement("span", { key: "fbn", style: { color: "#EAEDF5", fontSize: "36px", fontWeight: "900", textAlign: "center" } }, teamB),
                     ]
                   ),
                 ]
@@ -239,15 +243,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
         ]
       ),
       {
-    width: 1200,
-    height: 630,
-    headers: {
-      "Cache-Control": "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable",
-    },
-  }
-);
+        width: 1200,
+        height: 630,
+        headers: {
+          "Cache-Control": "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable",
+        },
+      }
+    );
   } catch (error) {
-    console.error("OG Image Error:", error);
-    return new Response("Failed to generate image", { status: 500 });
+    console.error("Scorecard Image Route Error:", error);
+    return new Response("Failed to generate scorecard image", { status: 500 });
   }
 }

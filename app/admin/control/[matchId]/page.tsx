@@ -1,9 +1,8 @@
 // app/admin/control/[matchId]/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 import { useCricketScoring } from "@/lib/hooks/useCricketScoring";
 import { useFootballScoring } from "@/lib/hooks/useFootballScoring";
@@ -26,7 +25,8 @@ import {
   UserPlus,
   Keyboard,
   ShieldAlert,
-  CloudRain
+  CloudRain,
+  PlayCircle
 } from "lucide-react";
 
 import WicketModal from "@/components/admin/WicketModal";
@@ -138,18 +138,17 @@ export default function DynamicControlDashboard() {
       if (["INPUT", "SELECT", "TEXTAREA"].includes(targetTag)) return;
       if (isProcessing) return;
 
-      // Close modal on Escape
       if (e.key === "Escape") {
         if (isWicketModalOpen) setIsWicketModalOpen(false);
         if (isExtrasModalOpen) setIsExtrasModalOpen(false);
         if (isNewBowlerModalOpen) setIsNewBowlerModalOpen(false);
+        if (isInningsBreakModalOpen) setIsInningsBreakModalOpen(false);
         if (isReviseTargetModalOpen) setIsReviseTargetModalOpen(false);
         if (isGoalModalOpen) setIsGoalModalOpen(false);
         if (isCardModalOpen) setIsCardModalOpen(false);
         return;
       }
 
-      // 🛡️ FIX: মডাল ওপেন থাকলে বা ইনিংস সমাপ্ত হলে কোনো স্কোরিং বা Undo এক্সিকিউট হবে না
       if (isAnyModalOpen || currentInnings?.isCompleted) return;
 
       // Undo shortcut (Ctrl + Z / Cmd + Z)
@@ -170,6 +169,9 @@ export default function DynamicControlDashboard() {
         } else if (e.key.toLowerCase() === "e") {
           e.preventDefault();
           setIsExtrasModalOpen(true);
+        } else if (e.key.toLowerCase() === "s") {
+          e.preventDefault();
+          handleSwapStrike();
         }
       }
 
@@ -196,10 +198,12 @@ export default function DynamicControlDashboard() {
     isGoalModalOpen,
     isCardModalOpen,
     handleRuns,
+    handleSwapStrike,
     handleToggleTimer,
     setIsWicketModalOpen,
     setIsExtrasModalOpen,
     setIsNewBowlerModalOpen,
+    setIsInningsBreakModalOpen,
     setIsReviseTargetModalOpen,
   ]);
 
@@ -215,7 +219,6 @@ export default function DynamicControlDashboard() {
     );
   }
 
-  // 🛡️ পারমিশন গার্ড: অন্য অ্যাডমিনের ম্যাচ কন্ট্রোল বন্ধ করা
   const creatorUid = (matchData.meta as any)?.createdBy;
   if (creatorUid && currentAdmin && creatorUid !== currentAdmin.uid) {
     return (
@@ -237,7 +240,7 @@ export default function DynamicControlDashboard() {
 
   const { meta, cricket, football } = matchData;
 
-  // 🌧️ DLS / Rain Rule Handler (1st & 2nd Innings Smart Update)
+  // 🌧️ DLS / Rain Rule Handler (Smart Result Trigger)
   const handleReviseTargetConfirm = async ({
     revisedTarget,
     revisedMaxOvers,
@@ -253,15 +256,18 @@ export default function DynamicControlDashboard() {
 
       if (cricket?.currentInnings === 2 && typeof revisedTarget === "number") {
         updates[`matches/${matchId}/cricket/innings2/target`] = revisedTarget;
+        
+        // যদি রিভাইজড টার্গেট অলরেডি অর্জিত হয়ে থাকে
+        const currentScore = cricket?.innings2?.score || 0;
+        if (currentScore >= revisedTarget) {
+          updates[`matches/${matchId}/cricket/innings2/isCompleted`] = true;
+          updates[`matches/${matchId}/meta/status`] = "completed";
+          updates[`matches/${matchId}/meta/activeGraphic`] = "RESULT_POSTER";
+        }
       }
 
       await update(ref(rtdb), updates);
-      showToast(
-        cricket?.currentInnings === 2
-          ? "Rain Rule applied! Target & Overs revised successfully."
-          : "Match Overs revised successfully for 1st Innings.",
-        "success"
-      );
+      showToast("বৃষ্টির নিয়ম ও ওভার সফলভাবে আপডেট হয়েছে।", "success");
     } catch (err) {
       console.error("Error updating match overs/target:", err);
       showToast("Failed to update overs/target.", "error");
@@ -289,7 +295,7 @@ export default function DynamicControlDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast("Match archived successfully!", "success");
+        showToast("ম্যাচ সফলভাবে আর্কাইভ করা হয়েছে!", "success");
         router.push("/admin");
       } else {
         showToast(data.error || "Failed to finalize match.", "error");
@@ -332,6 +338,8 @@ export default function DynamicControlDashboard() {
     setIsCardModalOpen(true);
   };
 
+  const isFirstInningsCompleted = cricket?.currentInnings === 1 && cricket?.innings1?.isCompleted;
+
   return (
     <div className="space-y-4 pb-16">
       {/* Cricket Modals */}
@@ -356,15 +364,14 @@ export default function DynamicControlDashboard() {
           />
           <InningsBreakModal
             isOpen={isInningsBreakModalOpen}
-            targetScore={(currentInnings?.score || 0) + 1}
+            onClose={() => setIsInningsBreakModalOpen(false)}
+            targetScore={(cricket?.innings1?.score || 0) + 1}
             chasingTeamName={bowlingTeamKey === "teamA" ? meta.teamA : meta.teamB}
             defendingTeamName={battingTeamKey === "teamA" ? meta.teamA : meta.teamB}
             chasingSquad={bowlingSquad}
             defendingSquad={battingSquad}
             onStartSecondInnings={startSecondInnings}
           />
-
-          {/* 🌧️ Dynamic Rain Rule / Overs Revision Modal */}
           <ReviseTargetModal
             isOpen={isReviseTargetModalOpen}
             onClose={() => setIsReviseTargetModalOpen(false)}
@@ -400,6 +407,23 @@ export default function DynamicControlDashboard() {
             currentMinute={footballClock.minute}
           />
         </>
+      )}
+
+      {/* 🚨 ১ ইনিংস শেষ হলে লাইভ আনলক ব্যানার */}
+      {isFirstInningsCompleted && (
+        <div className="flex items-center justify-between rounded-2xl border-2 border-signal-gold bg-signal-gold/15 p-4 shadow-lg animate-pulse">
+          <div>
+            <h4 className="text-sm font-bold text-signal-gold uppercase tracking-wider">1st Innings Completed</h4>
+            <p className="text-xs text-fg">Target: {(cricket?.innings1?.score || 0) + 1} Runs. Ready to start 2nd Innings?</p>
+          </div>
+          <button
+            onClick={() => setIsInningsBreakModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-signal-gold px-4 py-2 text-xs font-black text-ink shadow-md"
+          >
+            <PlayCircle size={15} />
+            <span>Start 2nd Innings</span>
+          </button>
+        </div>
       )}
 
       {/* ================= PERSISTENT LIVE SCORE HEADER ================= */}
@@ -479,7 +503,6 @@ export default function DynamicControlDashboard() {
           </div>
         </div>
 
-        {/* Striker / Non-Striker Row */}
         {meta.sport === "cricket" && (strikerBatsman || nonStrikerBatsman) && (
           <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border bg-ink/60 p-2 text-xs">
             <div className="flex-1 truncate">
@@ -491,7 +514,7 @@ export default function DynamicControlDashboard() {
             <button
               onClick={handleSwapStrike}
               disabled={isProcessing || activeBatsmen.length < 2}
-              title="Swap Strike"
+              title="Swap Strike (Hotkey: S)"
               className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-panel px-2.5 py-1 text-[11px] font-bold text-signal-gold transition-all hover:bg-panel-raised active:scale-95 disabled:opacity-40"
             >
               <ArrowLeftRight size={12} />
@@ -545,7 +568,7 @@ export default function DynamicControlDashboard() {
           <button
             type="button"
             onClick={() => setEnableHotkeys(!enableHotkeys)}
-            title={enableHotkeys ? "Hotkeys Active (0-6, W, E)" : "Hotkeys Disabled"}
+            title={enableHotkeys ? "Hotkeys Active (0-6, W, E, S)" : "Hotkeys Disabled"}
             className={`flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-bold transition-all active:scale-95 ${
               enableHotkeys
                 ? "border-pitch-green/40 bg-pitch-green/15 text-pitch-green"
@@ -558,282 +581,255 @@ export default function DynamicControlDashboard() {
         )}
       </div>
 
-      {/* ================= TAB CONTENT ================= */}
-      <AnimatePresence mode="wait">
-        {activeTab === "scoring" && (
-          <motion.div
-            key="tab-scoring"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.15 }}
-            className="space-y-4"
-          >
-            <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-fg">Fast Actions</h3>
-                  {enableHotkeys && (
-                    <span className="hidden rounded border border-border/80 bg-ink px-1.5 py-0.5 text-[10px] font-medium text-fg-faint sm:inline">
-                      Numpad [0-6]
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {/* 🌧️ Rain Rule Button (Visible in Both Innings for Cricket) */}
-                  {meta.sport === "cricket" && (
-                    <button
-                      type="button"
-                      onClick={() => setIsReviseTargetModalOpen(true)}
-                      className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-signal-gold/40 bg-signal-gold/10 px-3 py-1.5 text-xs font-bold text-signal-gold transition-colors hover:bg-signal-gold/20"
-                    >
-                      <CloudRain size={13} />
-                      <span>{cricket?.currentInnings === 2 ? "DLS / Revise Target" : "Revise Overs (Rain)"}</span>
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => undoLastAction(matchId)}
-                    disabled={isProcessing}
-                    className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-border bg-ink px-3 py-1.5 text-xs font-semibold text-fg-muted hover:bg-panel-raised disabled:opacity-50"
-                  >
-                    <RotateCcw size={14} /> Undo <kbd className="hidden font-mono text-[9px] text-fg-faint sm:inline">[Ctrl+Z]</kbd>
-                  </button>
-                </div>
-              </div>
-
-              {meta.sport === "cricket" ? (
-                <>
-                  <div className="mb-3 grid grid-cols-4 gap-2.5 sm:grid-cols-7">
-                    {[0, 1, 2, 3, 4, 5, 6].map((run) => (
-                      <button
-                        key={run}
-                        onClick={() => handleRuns(run)}
-                        disabled={isProcessing || currentInnings?.isCompleted}
-                        className="relative min-h-[52px] rounded-xl border border-border bg-ink font-score text-2xl text-fg transition-all hover:border-electric/40 active:scale-90 active:bg-electric/20 disabled:opacity-50"
-                      >
-                        {run}
-                        {enableHotkeys && (
-                          <span className="absolute bottom-1 right-1.5 hidden font-sans text-[9px] font-bold text-fg-faint sm:inline">
-                            [{run}]
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setIsWicketModalOpen(true)}
-                      disabled={isProcessing || currentInnings?.isCompleted}
-                      className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-crimson/40 bg-crimson/15 text-sm font-bold text-crimson transition-all active:scale-95 disabled:opacity-50"
-                    >
-                      <span>WICKET (OUT)</span>
-                      {enableHotkeys && <kbd className="hidden rounded bg-crimson/20 px-1.5 py-0.5 font-mono text-[10px] sm:inline">[W]</kbd>}
-                    </button>
-                    <button
-                      onClick={() => setIsExtrasModalOpen(true)}
-                      disabled={isProcessing || currentInnings?.isCompleted}
-                      className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-electric/40 bg-electric/15 text-sm font-bold text-electric transition-all active:scale-95 disabled:opacity-50"
-                    >
-                      <span>EXTRAS (WD,NB)</span>
-                      {enableHotkeys && <kbd className="hidden rounded bg-electric/20 px-1.5 py-0.5 font-mono text-[10px] sm:inline">[E]</kbd>}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-4">
-                  {/* Half Switcher */}
-                  <div className="flex flex-wrap justify-center gap-2 rounded-xl border border-border bg-ink p-2">
-                    {["1ST HALF", "HALF TIME", "2ND HALF", "FULL TIME"].map((half) => (
-                      <button
-                        key={half}
-                        onClick={() => handleHalfChange(half)}
-                        className={`min-h-[38px] flex-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all ${
-                          football?.half === half
-                            ? "bg-pitch-green text-ink shadow-md shadow-pitch-green/20"
-                            : "bg-panel text-fg-muted hover:text-fg"
-                        }`}
-                      >
-                        {half}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Team Scoring Cards (Goal, Yellow, Red) */}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-2.5 rounded-xl border border-border bg-ink/40 p-3.5">
-                      <div className="text-center text-xs font-bold uppercase tracking-wider text-electric">{meta.teamA}</div>
-                      <button
-                        onClick={() => openGoalModal("A")}
-                        disabled={isProcessing}
-                        className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-pitch-green/50 bg-pitch-green/20 text-base font-bold text-pitch-green active:scale-95 disabled:opacity-50"
-                      >
-                        <Goal size={20} /> GOAL (+)
-                      </button>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => openCardModal("A", "yellow")}
-                          disabled={isProcessing}
-                          className="min-h-[38px] flex-1 rounded-lg border border-signal-gold/30 bg-signal-gold/10 text-xs font-bold text-signal-gold"
-                        >
-                          Yellow
-                        </button>
-                        <button
-                          onClick={() => openCardModal("A", "red")}
-                          disabled={isProcessing}
-                          className="min-h-[38px] flex-1 rounded-lg border border-crimson/30 bg-crimson/10 text-xs font-bold text-crimson"
-                        >
-                          Red
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2.5 rounded-xl border border-border bg-ink/40 p-3.5">
-                      <div className="text-center text-xs font-bold uppercase tracking-wider text-pitch-green">{meta.teamB}</div>
-                      <button
-                        onClick={() => openGoalModal("B")}
-                        disabled={isProcessing}
-                        className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-pitch-green/50 bg-pitch-green/20 text-base font-bold text-pitch-green active:scale-95 disabled:opacity-50"
-                      >
-                        <Goal size={20} /> GOAL (+)
-                      </button>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => openCardModal("B", "yellow")}
-                          disabled={isProcessing}
-                          className="min-h-[38px] flex-1 rounded-lg border border-signal-gold/30 bg-signal-gold/10 text-xs font-bold text-signal-gold"
-                        >
-                          Yellow
-                        </button>
-                        <button
-                          onClick={() => openCardModal("B", "red")}
-                          disabled={isProcessing}
-                          className="min-h-[38px] flex-1 rounded-lg border border-crimson/30 bg-crimson/10 text-xs font-bold text-crimson"
-                        >
-                          Red
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+      {/* ================= TABS CONTENT (Zero Unmount State Preservation) ================= */}
+      <div className={activeTab === "scoring" ? "space-y-4" : "hidden"}>
+        <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-fg">Fast Actions</h3>
+              {enableHotkeys && (
+                <span className="hidden rounded border border-border/80 bg-ink px-1.5 py-0.5 text-[10px] font-medium text-fg-faint sm:inline">
+                  Hotkeys Active
+                </span>
               )}
             </div>
 
-            {/* Active Bowler Card / Football Possession Bar */}
-            {meta.sport === "cricket" ? (
-              <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-faint">
-                    <Target size={13} /> Active Bowler ({bowlingTeamName})
-                  </h3>
-                  <button
-                    onClick={() => setIsNewBowlerModalOpen(true)}
-                    className="flex items-center gap-1 rounded-lg border border-electric/40 bg-electric/10 px-2 py-1 text-[10px] font-bold text-electric hover:bg-electric/20"
-                  >
-                    <UserPlus size={12} />
-                    <span>Change Bowler</span>
-                  </button>
-                </div>
+            <div className="flex items-center gap-2">
+              {meta.sport === "cricket" && (
+                <button
+                  type="button"
+                  onClick={() => setIsReviseTargetModalOpen(true)}
+                  className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-signal-gold/40 bg-signal-gold/10 px-3 py-1.5 text-xs font-bold text-signal-gold transition-colors hover:bg-signal-gold/20"
+                >
+                  <CloudRain size={13} />
+                  <span>{cricket?.currentInnings === 2 ? "DLS / Revise Target" : "Revise Overs (Rain)"}</span>
+                </button>
+              )}
 
-                {activeBowlerObj ? (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="truncate text-base font-bold text-fg">{activeBowlerObj.name}</div>
-                      <div className="mt-0.5 text-xs text-fg-muted">
-                        Econ {bowlerEconomy} • Maidens: {activeBowlerObj.maidens || 0}
-                      </div>
-                    </div>
-                    <div className="font-score text-2xl font-bold text-pitch-green">
-                      {activeBowlerObj.wickets}-{activeBowlerObj.runs}{" "}
-                      <span className="font-sans text-xs text-fg-muted">({activeBowlerObj.overs} ov)</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-fg-muted">কোনো বোলার সিলেক্ট করা নেই।</p>
-                )}
-              </div>
-            ) : (
-              football && (
-                <div className="rounded-xl border border-border bg-panel p-4 shadow-lg">
-                  <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-fg-faint">
-                    <span>Possession</span>
-                    <span>{football.currentHalf === 2 ? "2nd Half" : "1st Half"}</span>
-                  </div>
-                  {(() => {
-                    const halfData = football.currentHalf === 2 ? football.half2 : football.half1;
-                    const possession = halfData?.possession || { teamA: 50, teamB: 50 };
-                    return (
-                      <>
-                        <div className="mb-2 flex items-center gap-2">
-                          <button
-                            onClick={() => handlePossessionAdjust("A", -5)}
-                            disabled={isProcessing}
-                            className="min-h-[34px] min-w-[34px] rounded-md bg-ink p-1 text-fg-muted"
-                          >
-                            <Minus size={12} />
-                          </button>
-                          <div className="flex h-2.5 flex-1 overflow-hidden rounded-full bg-ink">
-                            <div className="h-full bg-pitch-green transition-all" style={{ width: `${possession.teamA}%` }} />
-                            <div className="h-full bg-electric transition-all" style={{ width: `${possession.teamB}%` }} />
-                          </div>
-                          <button
-                            onClick={() => handlePossessionAdjust("B", -5)}
-                            disabled={isProcessing}
-                            className="min-h-[34px] min-w-[34px] rounded-md bg-ink p-1 text-fg-muted"
-                          >
-                            <Minus size={12} />
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-bold">
-                          <span className="text-pitch-green">{meta.teamA}: {possession.teamA}%</span>
-                          <span className="text-electric">{meta.teamB}: {possession.teamB}%</span>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              )
-            )}
-
-            {/* End Match Button */}
-            <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg">
               <button
-                onClick={handleFinalizeMatch}
-                disabled={isFinalizing || isProcessing}
-                className="min-h-[48px] w-full rounded-xl border border-crimson/50 bg-crimson/20 py-3 text-xs font-bold uppercase tracking-widest text-crimson transition-all hover:bg-crimson/30 disabled:opacity-50"
+                onClick={() => undoLastAction(matchId)}
+                disabled={isProcessing}
+                className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-border bg-ink px-3 py-1.5 text-xs font-semibold text-fg-muted hover:bg-panel-raised disabled:opacity-50"
               >
-                {isFinalizing ? "Archiving Match..." : "End Match & Archive"}
+                <RotateCcw size={14} /> Undo <kbd className="hidden font-mono text-[9px] text-fg-faint sm:inline">[Ctrl+Z]</kbd>
               </button>
             </div>
-          </motion.div>
+          </div>
+
+          {meta.sport === "cricket" ? (
+            <>
+              <div className="mb-3 grid grid-cols-4 gap-2.5 sm:grid-cols-7">
+                {[0, 1, 2, 3, 4, 5, 6].map((run) => (
+                  <button
+                    key={run}
+                    onClick={() => handleRuns(run)}
+                    disabled={isProcessing || currentInnings?.isCompleted}
+                    className="relative min-h-[52px] rounded-xl border border-border bg-ink font-score text-2xl text-fg transition-all hover:border-electric/40 active:scale-90 active:bg-electric/20 disabled:opacity-50"
+                  >
+                    {run}
+                    {enableHotkeys && (
+                      <span className="absolute bottom-1 right-1.5 hidden font-sans text-[9px] font-bold text-fg-faint sm:inline">
+                        [{run}]
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setIsWicketModalOpen(true)}
+                  disabled={isProcessing || currentInnings?.isCompleted}
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-crimson/40 bg-crimson/15 text-sm font-bold text-crimson transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <span>WICKET (OUT)</span>
+                  {enableHotkeys && <kbd className="hidden rounded bg-crimson/20 px-1.5 py-0.5 font-mono text-[10px] sm:inline">[W]</kbd>}
+                </button>
+                <button
+                  onClick={() => setIsExtrasModalOpen(true)}
+                  disabled={isProcessing || currentInnings?.isCompleted}
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-electric/40 bg-electric/15 text-sm font-bold text-electric transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <span>EXTRAS (WD,NB)</span>
+                  {enableHotkeys && <kbd className="hidden rounded bg-electric/20 px-1.5 py-0.5 font-mono text-[10px] sm:inline">[E]</kbd>}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap justify-center gap-2 rounded-xl border border-border bg-ink p-2">
+                {["1ST HALF", "HALF TIME", "2ND HALF", "FULL TIME"].map((half) => (
+                  <button
+                    key={half}
+                    onClick={() => handleHalfChange(half)}
+                    className={`min-h-[38px] flex-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all ${
+                      football?.half === half
+                        ? "bg-pitch-green text-ink shadow-md shadow-pitch-green/20"
+                        : "bg-panel text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    {half}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2.5 rounded-xl border border-border bg-ink/40 p-3.5">
+                  <div className="text-center text-xs font-bold uppercase tracking-wider text-electric">{meta.teamA}</div>
+                  <button
+                    onClick={() => openGoalModal("A")}
+                    disabled={isProcessing}
+                    className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-pitch-green/50 bg-pitch-green/20 text-base font-bold text-pitch-green active:scale-95 disabled:opacity-50"
+                  >
+                    <Goal size={20} /> GOAL (+)
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => openCardModal("A", "yellow")}
+                      disabled={isProcessing}
+                      className="min-h-[38px] flex-1 rounded-lg border border-signal-gold/30 bg-signal-gold/10 text-xs font-bold text-signal-gold"
+                    >
+                      Yellow
+                    </button>
+                    <button
+                      onClick={() => openCardModal("A", "red")}
+                      disabled={isProcessing}
+                      className="min-h-[38px] flex-1 rounded-lg border border-crimson/30 bg-crimson/10 text-xs font-bold text-crimson"
+                    >
+                      Red
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 rounded-xl border border-border bg-ink/40 p-3.5">
+                  <div className="text-center text-xs font-bold uppercase tracking-wider text-pitch-green">{meta.teamB}</div>
+                  <button
+                    onClick={() => openGoalModal("B")}
+                    disabled={isProcessing}
+                    className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-pitch-green/50 bg-pitch-green/20 text-base font-bold text-pitch-green active:scale-95 disabled:opacity-50"
+                  >
+                    <Goal size={20} /> GOAL (+)
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => openCardModal("B", "yellow")}
+                      disabled={isProcessing}
+                      className="min-h-[38px] flex-1 rounded-lg border border-signal-gold/30 bg-signal-gold/10 text-xs font-bold text-signal-gold"
+                    >
+                      Yellow
+                    </button>
+                    <button
+                      onClick={() => openCardModal("B", "red")}
+                      disabled={isProcessing}
+                      className="min-h-[38px] flex-1 rounded-lg border border-crimson/30 bg-crimson/10 text-xs font-bold text-crimson"
+                    >
+                      Red
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {meta.sport === "cricket" ? (
+          <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-faint">
+                <Target size={13} /> Active Bowler ({bowlingTeamName})
+              </h3>
+              <button
+                onClick={() => setIsNewBowlerModalOpen(true)}
+                className="flex items-center gap-1 rounded-lg border border-electric/40 bg-electric/10 px-2 py-1 text-[10px] font-bold text-electric hover:bg-electric/20"
+              >
+                <UserPlus size={12} />
+                <span>Change Bowler</span>
+              </button>
+            </div>
+
+            {activeBowlerObj ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="truncate text-base font-bold text-fg">{activeBowlerObj.name}</div>
+                  <div className="mt-0.5 text-xs text-fg-muted">
+                    Econ {bowlerEconomy} • Maidens: {activeBowlerObj.maidens || 0}
+                  </div>
+                </div>
+                <div className="font-score text-2xl font-bold text-pitch-green">
+                  {activeBowlerObj.wickets}-{activeBowlerObj.runs}{" "}
+                  <span className="font-sans text-xs text-fg-muted">({activeBowlerObj.overs} ov)</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-fg-muted">কোনো বোলার সিলেক্ট করা নেই।</p>
+            )}
+          </div>
+        ) : (
+          football && (
+            <div className="rounded-xl border border-border bg-panel p-4 shadow-lg">
+              <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-fg-faint">
+                <span>Possession</span>
+                <span>{football.currentHalf === 2 ? "2nd Half" : "1st Half"}</span>
+              </div>
+              {(() => {
+                const halfData = football.currentHalf === 2 ? football.half2 : football.half1;
+                const possession = halfData?.possession || { teamA: 50, teamB: 50 };
+                return (
+                  <>
+                    <div className="mb-2 flex items-center gap-2">
+                      <button
+                        onClick={() => handlePossessionAdjust("A", -5)}
+                        disabled={isProcessing}
+                        className="min-h-[34px] min-w-[34px] rounded-md bg-ink p-1 text-fg-muted"
+                      >
+                        <Minus size={12} />
+                      </button>
+                      <div className="flex h-2.5 flex-1 overflow-hidden rounded-full bg-ink">
+                        <div className="h-full bg-pitch-green transition-all" style={{ width: `${possession.teamA}%` }} />
+                        <div className="h-full bg-electric transition-all" style={{ width: `${possession.teamB}%` }} />
+                      </div>
+                      <button
+                        onClick={() => handlePossessionAdjust("B", -5)}
+                        disabled={isProcessing}
+                        className="min-h-[34px] min-w-[34px] rounded-md bg-ink p-1 text-fg-muted"
+                      >
+                        <Minus size={12} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-pitch-green">{meta.teamA}: {possession.teamA}%</span>
+                      <span className="text-electric">{meta.teamB}: {possession.teamB}%</span>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )
         )}
 
-        {/* Broadcast & OBS Tab */}
-        {activeTab === "broadcast" && (
-          <motion.div
-            key="tab-broadcast"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.15 }}
-            className="space-y-4"
+        <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg">
+          <button
+            onClick={handleFinalizeMatch}
+            disabled={isFinalizing || isProcessing}
+            className="min-h-[48px] w-full rounded-xl border border-crimson/50 bg-crimson/20 py-3 text-xs font-bold uppercase tracking-widest text-crimson transition-all hover:bg-crimson/30 disabled:opacity-50"
           >
-            <BroadcastControls
-              matchId={matchId}
-              sport={meta.sport}
-              showScoreboard={meta.showScoreboard !== false}
-              showLogo={meta.showLogo !== false}
-              activeGraphic={meta.activeGraphic || "LOWER_THIRD"}
-              activeTheme={meta.activeTheme}
-              customLogoUrl={meta.customLogoUrl}
-              customLogoLeftUrl={(meta as any).customLogoLeftUrl}
-            />
+            {isFinalizing ? "Archiving Match..." : "End Match & Archive"}
+          </button>
+        </div>
+      </div>
 
-            <OverlayLinksCard matchId={matchId} sport={meta.sport} theme={meta.activeTheme} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className={activeTab === "broadcast" ? "space-y-4" : "hidden"}>
+        <BroadcastControls
+          matchId={matchId}
+          sport={meta.sport}
+          showScoreboard={meta.showScoreboard !== false}
+          showLogo={meta.showLogo !== false}
+          activeGraphic={meta.activeGraphic || "LOWER_THIRD"}
+          activeTheme={meta.activeTheme}
+          customLogoUrl={meta.customLogoUrl}
+          customLogoLeftUrl={(meta as any).customLogoLeftUrl}
+        />
+        <OverlayLinksCard matchId={matchId} sport={meta.sport} theme={meta.activeTheme} />
+      </div>
     </div>
   );
 }

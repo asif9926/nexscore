@@ -21,7 +21,7 @@ export type BroadcastGraphicType =
 export interface MatchMeta {
   sport: "cricket" | "football";
   status: "live" | "completed" | "upcoming";
-  createdBy?: string; // 🛡️ Multi-Tenant Admin UID
+  createdBy?: string;
   teamA: string;
   teamB: string;
   tournament?: string;
@@ -37,13 +37,6 @@ export interface MatchMeta {
   updatedAt?: number;
 }
 
-export interface ActionLog {
-  timestamp: number;
-  type: string;
-  previousState: any;
-}
-
-// --- CRICKET ---
 export interface Batsman {
   id: string;
   name: string;
@@ -60,6 +53,7 @@ export interface Bowler {
   id: string;
   name: string;
   overs: string;
+  legalBallsDelivered?: number; // ক্যালকুলেশনের নির্ভুলতার জন্য
   maidens: number;
   runs: number;
   wickets: number;
@@ -91,27 +85,27 @@ export interface BallCommentary {
   bowlerName: string;
   text: string;
   timestamp: number;
-  label: string; // "1", "W", "Wd" ইত্যাদি ওভার টাইমলাইনে দেখানোর জন্য
+  label: string;
 }
-
 
 export interface CricketInnings {
   battingTeam: string;
   score: number;
   wickets: number;
   overs: string;
+  totalBallsDelivered?: number; // ফ্র্যাকশনাল হিসাবের সুবিধার্থে
   runRate: number;
   extras: CricketExtras;
   batsmen: Batsman[];
   bowlers: Bowler[];
-  recentBalls: (string | BallCommentary)[];
+  recentBalls: BallCommentary[]; // ফিক্সড: স্ট্রিং ইউনিয়ন দূর করা হয়েছে
   fallOfWickets: FallOfWicket[];
   isCompleted: boolean;
-  target?: number; // 2nd Innings Target
+  target?: number;
 }
 
 export interface CricketState {
-  maxOvers: number; // T20, ODI, T10 etc
+  maxOvers: number;
   toss: { winner: 'teamA' | 'teamB' | null; decision: 'bat' | 'bowl' | null };
   squads: { teamA: Player[]; teamB: Player[] };
   currentInnings: 1 | 2;
@@ -119,7 +113,6 @@ export interface CricketState {
   innings2: CricketInnings;
 }
 
-// --- FOOTBALL ---
 export interface FootballCard {
   type: 'yellow' | 'red';
   minute: number;
@@ -145,7 +138,6 @@ export interface FootballHalfStats {
   possession: FootballPossession;
 }
 
-// ✅ NEW: Football Substitution Interface added to replace `unknown`
 export interface FootballSubstitution {
   playerInId: string;
   playerOutId: string;
@@ -163,22 +155,16 @@ export interface FootballState {
   isRunning: boolean;
   startedAt: number | null;
   elapsedSeconds: number;
-  half: string; // "1ST HALF" | "HALF TIME" | "2ND HALF" | "FULL TIME"
+  half: string;
   currentHalf: 1 | 2;
   squads: { teamA: Player[]; teamB: Player[] };
   half1: FootballHalfStats;
   half2: FootballHalfStats;
   cards: { teamA: FootballCard[]; teamB: FootballCard[] };
-  // ✅ FIXED: Using the new interface instead of unknown[]
   substitutions: { teamA: FootballSubstitution[]; teamB: FootballSubstitution[] };
   events: FootballEvent[];
 }
 
-// ✅ FIXED: আগে { adminOnline: boolean; lastPing: number } ছিল, কিন্তু
-// useConnectionStatus.ts আসলে কখনোই "adminOnline" নামে কিছু লেখে না — লেখে
-// `presence/admins/{sessionId}: true` (প্রতি ট্যাব/সেশনের জন্য আলাদা key,
-// onDisconnect() দিয়ে অটো-ক্লিনআপ)। টাইপটা রানটাইম শেপের সাথে মিলছিল না বলেই
-// ReconnectingBanner-এর বাগটা TypeScript ধরতে পারেনি। এখন আসল শেপ অনুযায়ী।
 export interface MatchPresence {
   admins?: Record<string, boolean>;
   lastPing: number;
@@ -187,10 +173,6 @@ export interface MatchPresence {
 export interface MatchData {
   meta: MatchMeta;
   presence: MatchPresence;
-  // ✅ FIXED: actionLog আর এখানে থাকে না — এখন আলাদা RTDB root নোড
-  // ("match_actionLog", দেখো lib/firebase/actions.ts) হওয়ায় এই MatchData shape-এর
-  // অংশ না, তাই এখান থেকে বাদ। এতে root "match" listener (MatchDataContext)
-  // আর কখনোই actionLog history ডাউনলোড করবে না — যেটাই ছিল আসল bloat-এর কারণ।
   cricket?: CricketState;
   football?: FootballState;
 }

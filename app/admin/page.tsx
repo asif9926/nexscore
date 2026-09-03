@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ref, get } from "firebase/database";
+import { ref, get, set } from "firebase/database";
 import { rtdb, auth } from "@/lib/firebase/client";
 import { onAuthStateChanged } from "firebase/auth";
 import { 
@@ -31,7 +31,6 @@ export default function AdminDashboardHome() {
 
   const [history, setHistory] = useState<any[]>([]);
   const [fetchingHistory, setFetchingHistory] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,10 +47,13 @@ export default function AdminDashboardHome() {
     return () => unsub();
   }, []);
 
+  // 🛡️ অ্যাডমিনের অ্যাক্টিভ ম্যাচ চেক ও ডেড-পয়েন্টার অটো-ক্লিনআপ
   const checkMyActiveMatch = async (uid: string) => {
     setActiveMatchLoading(true);
     try {
-      const activeMatchSnap = await get(ref(rtdb, `admin_active_matches/${uid}`));
+      const activeMatchRef = ref(rtdb, `admin_active_matches/${uid}`);
+      const activeMatchSnap = await get(activeMatchRef);
+
       if (activeMatchSnap.exists()) {
         const matchId = activeMatchSnap.val();
         if (matchId) {
@@ -59,8 +61,12 @@ export default function AdminDashboardHome() {
           if (matchDataSnap.exists() && matchDataSnap.val()?.meta?.status === "live") {
             setActiveMatch({ id: matchId, data: matchDataSnap.val() });
           } else {
+            // ম্যাচটি শেষ হয়ে গেলে বা ডিলিট হলে পয়েন্টার মুছে ফেলা
+            await set(activeMatchRef, null);
             setActiveMatch(null);
           }
+        } else {
+          setActiveMatch(null);
         }
       } else {
         setActiveMatch(null);
@@ -72,13 +78,11 @@ export default function AdminDashboardHome() {
     }
   };
 
-  // 🛡️ শুধুমাত্র লগইন করা অ্যাডমিনের ম্যাচ ফেচ করা
   const loadMyHistory = async (uid?: string) => {
     const targetUid = uid || currentAdmin?.uid;
     if (!targetUid) return;
 
     setFetchingHistory(true);
-    setFetchError(null);
     try {
       const res = await fetch(`/api/match/history?createdBy=${targetUid}`, { cache: "no-store" });
       if (!res.ok) throw new Error("Server Error while loading archives.");
@@ -86,10 +90,10 @@ export default function AdminDashboardHome() {
       if (data.success) {
         setHistory(data.matches || []);
       } else {
-        setFetchError(data.error || "Failed to load archived matches.");
+        showToast(data.error || "Failed to load archived matches.", "error");
       }
     } catch (err: any) {
-      setFetchError(err?.message || "Network error.");
+      console.error("History fetch error:", err);
     } finally {
       setFetchingHistory(false);
     }

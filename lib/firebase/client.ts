@@ -16,11 +16,12 @@ const firebaseConfig = {
 };
 
 // Next.js hot-reload এ একাধিক ইন্সট্যান্স তৈরি হওয়া ঠেকানোর জন্য
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const rtdb = getDatabase(app);
+// 🛡️ স্পেসিফিক ডাটাবেস URL বাইন্ড করে ইনস্ট্যান্ট কানেকশন নিশ্চিত করা
+export const rtdb = getDatabase(app, process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL);
 export const firestore = getFirestore(app);
-export const storage = getStorage(app); // 👈 Storage export
+export const storage = getStorage(app);
 
 export default app;

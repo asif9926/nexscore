@@ -5,14 +5,19 @@ import { useEffect, ReactNode } from "react";
 
 export default function OverlayThemeGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
-    // 🛡️ ওভারলে থেকে লাইট/সানলাইট মোড রিমুভ করে ট্রান্সপারেন্ট ব্রডকাস্ট ডার্ক ব্যাকগ্রাউন্ড নিশ্চিত করা
+    // 🛡️ OBS Studio ব্রাউজার সোর্সে যেকোনো লাইট/সানলাইট ক্লাস সম্পূর্ণ রিমুভ ও স্বচ্ছ রাখা
     document.documentElement.classList.remove("sunlight");
     document.documentElement.style.backgroundColor = "transparent";
+    document.documentElement.style.overflow = "hidden";
     document.body.style.backgroundColor = "transparent";
+    document.body.style.overflow = "hidden";
 
     return () => {
-      // ওভারলে বন্ধ হলে আগের সেভ করা থিম পুনরুদ্ধার করা
-      const savedMode = localStorage.getItem("nexscore_sunlight") === "true";
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      
+      // ওভারলে বন্ধ হলে পাবলিক পেজের পূর্ববর্তী থিম পুনরুদ্ধার
+      const savedMode = typeof window !== "undefined" && localStorage.getItem("nexscore_sunlight") !== "false";
       if (savedMode) {
         document.documentElement.classList.add("sunlight");
       }
@@ -22,7 +27,7 @@ export default function OverlayThemeGuard({ children }: { children: ReactNode })
   return (
     <div 
       data-overlay-root
-      className="relative min-h-screen w-full overflow-hidden bg-transparent font-sans select-none antialiased [transform:translateZ(0)]"
+      className="relative h-screen w-full overflow-hidden bg-transparent font-sans select-none antialiased [transform:translateZ(0)]"
     >
       {children}
     </div>

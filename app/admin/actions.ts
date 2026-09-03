@@ -12,6 +12,7 @@ export async function getMatchHistory(createdBy?: string): Promise<{ success: bo
       snapshot = await adminFirestore
         .collection("matches_history")
         .where("createdBy", "==", createdBy)
+        .limit(50)
         .get();
     } else {
       snapshot = await adminFirestore
@@ -53,14 +54,13 @@ export async function getMatchHistory(createdBy?: string): Promise<{ success: bo
   }
 }
 
-// 🛡️ শুধুমাত্র নিজের তৈরি করা ম্যাচ ডিলিট করার পারমিশন গার্ড
 export async function deleteMatchAction(id: string, clientToken?: string) {
   try {
     const cookieStore = await cookies();
     const token = clientToken || cookieStore.get("AuthToken")?.value;
 
     if (!token) {
-      return { success: false, error: "Unauthorized access: Session token missing." };
+      return { success: false, error: "Unauthorized: Session token missing." };
     }
 
     let adminUid: string | null = null;
@@ -78,7 +78,7 @@ export async function deleteMatchAction(id: string, clientToken?: string) {
     }
 
     if (!adminUid) {
-      return { success: false, error: "Invalid or expired session. Please log in again." };
+      return { success: false, error: "Invalid or expired session." };
     }
 
     const docRef = adminFirestore.collection("matches_history").doc(id);
@@ -91,7 +91,7 @@ export async function deleteMatchAction(id: string, clientToken?: string) {
     const docData = docSnap.data();
     const matchCreator = docData?.createdBy || docData?.fullSnapshot?.meta?.createdBy;
 
-    // 🛡️ অন্য অ্যাডমিনের ম্যাচ ডিলিট রোধ
+    // ওনারশিপ এনফোর্সমেন্ট
     if (matchCreator && matchCreator !== adminUid) {
       return { success: false, error: "Forbidden: You cannot delete matches created by other admins." };
     }

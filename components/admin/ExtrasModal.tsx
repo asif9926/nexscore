@@ -1,7 +1,7 @@
 // components/admin/ExtrasModal.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PlusCircle } from "lucide-react";
 import ResponsiveModal from "@/components/common/ResponsiveModal";
 
@@ -16,10 +16,17 @@ export default function ExtrasModal({ isOpen, onClose, onConfirm }: ExtrasModalP
   const [extraRunsRan, setExtraRunsRan] = useState<number>(0);
   const [isFromBat, setIsFromBat] = useState<boolean>(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      setExtraType("Wide");
+      setExtraRunsRan(0);
+      setIsFromBat(false);
+    }
+  }, [isOpen]);
+
   const handleSubmit = () => {
     onConfirm({ type: extraType, extraRunsRan, isFromBat });
-    setExtraRunsRan(0);
-    setIsFromBat(false);
+    onClose();
   };
 
   return (
@@ -31,10 +38,11 @@ export default function ExtrasModal({ isOpen, onClose, onConfirm }: ExtrasModalP
       accent="electric"
       footer={
         <div className="flex gap-3">
-          <button onClick={onClose} className="rounded-xl px-5 py-3 font-medium text-fg-muted hover:bg-panel">
+          <button type="button" onClick={onClose} className="rounded-xl px-5 py-3 font-medium text-fg-muted hover:bg-panel">
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             className="min-h-[44px] flex-1 rounded-xl bg-electric px-6 py-3 font-bold text-white shadow-lg shadow-electric/20 hover:opacity-90"
           >
@@ -49,9 +57,13 @@ export default function ExtrasModal({ isOpen, onClose, onConfirm }: ExtrasModalP
           {["Wide", "No Ball", "Bye", "Leg Bye"].map((type) => (
             <button
               key={type}
+              type="button"
               onClick={() => {
                 setExtraType(type);
                 if (type !== "No Ball") setIsFromBat(false);
+                if (type === "Bye" || type === "Leg Bye") {
+                  if (extraRunsRan === 0) setExtraRunsRan(1);
+                }
               }}
               className={`min-h-[44px] rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${
                 extraType === type
@@ -67,12 +79,13 @@ export default function ExtrasModal({ isOpen, onClose, onConfirm }: ExtrasModalP
 
       <div>
         <label className="mb-2 block text-sm font-medium text-fg-muted">
-          {extraType === "No Ball" ? "Runs Scored from Shot (0 - 6)" : "Additional Runs Ran (Optional)"}
+          {extraType === "No Ball" ? "Runs Scored from Shot (0 - 6)" : "Runs Completed (Overthrows Included)"}
         </label>
         <div className="flex gap-2">
-          {[0, 1, 2, 3, 4, 6].map((run) => (
+          {(extraType === "Bye" || extraType === "Leg Bye" ? [1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5, 6]).map((run) => (
             <button
               key={run}
+              type="button"
               onClick={() => setExtraRunsRan(run)}
               className={`min-h-[44px] flex-1 rounded-xl border text-lg font-bold transition-all ${
                 extraRunsRan === run

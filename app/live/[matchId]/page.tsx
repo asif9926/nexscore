@@ -12,7 +12,7 @@ import Footer from "@/components/common/Footer";
 
 export default function SingleLiveMatchPage() {
   const params = useParams();
-  const matchId = params?.matchId as string;
+  const matchId = (params?.matchId as string) || "";
   const { matchData, loading } = useMatchData(matchId);
 
   if (loading) {
@@ -65,7 +65,8 @@ export default function SingleLiveMatchPage() {
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-fg selection:bg-electric/30">
       <Navbar />
-      <ReconnectingBanner />
+      {/* 🛡️ ফিক্সড: প্রপস পাস করা হয়েছে যাতে রিয়েল-টাইম প্রেজেন্স ডিটেক্ট করতে পারে */}
+      <ReconnectingBanner matchId={matchId} matchData={matchData} />
 
       <div className="pointer-events-none fixed inset-0 z-0 hidden overflow-hidden sm:block">
         <div className="absolute left-[-10%] top-[-10%] h-[50vh] w-[50vw] rounded-full bg-electric/10 blur-[100px]" />

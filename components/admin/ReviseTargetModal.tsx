@@ -44,11 +44,11 @@ export default function ReviseTargetModal({
 
   const handleSubmit = () => {
     if (!maxOvers || maxOvers <= 0) {
-      return showToast("Please enter valid revised match overs.", "error");
+      return showToast("সঠিক ওভার সংখ্যা ইনপুট দিন।", "error");
     }
 
     if (isSecondInnings && (!target || target <= 0)) {
-      return showToast("Please enter a valid revised target for 2nd innings.", "error");
+      return showToast("২য় ইনিংসের জন্য সংশোধিত টার্গেট দিন।", "error");
     }
 
     onConfirm({
@@ -64,34 +64,35 @@ export default function ReviseTargetModal({
     <ResponsiveModal
       isOpen={isOpen}
       onClose={onClose}
-      title={isSecondInnings ? "Rain Rule / DLS Target Override" : "Revise Match Overs (Rain Delay)"}
+      title={isSecondInnings ? "Rain Delay / DLS Target Override" : "Revise Match Overs (Rain Delay)"}
       icon={<CloudRain size={20} />}
       accent="electric"
       footer={
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-electric px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-electric/20 transition-opacity hover:opacity-90"
           >
             <Check size={14} />
-            <span>{isSecondInnings ? "Apply Rain Rule Target" : "Update Match Overs"}</span>
+            <span>{isSecondInnings ? "Apply Rain Target" : "Update Match Overs"}</span>
           </button>
         </div>
       }
     >
       <div className="space-y-4 text-xs">
-        {/* Current Match Status Notice */}
         <div className="space-y-1 rounded-xl border border-electric/30 bg-electric/10 p-3.5">
           <div className="flex items-center gap-1.5 font-bold text-electric">
             <AlertCircle size={14} />
             <span>
-              {isSecondInnings ? `Match State: ${battingTeam} 2nd Innings (Run Chase)` : `Match State: ${battingTeam} 1st Innings`}
+              {isSecondInnings ? `Match State: ${battingTeam} 2nd Innings (Chase)` : `Match State: ${battingTeam} 1st Innings`}
             </span>
           </div>
           <p className="text-[11px] leading-relaxed text-fg-muted">
@@ -100,7 +101,6 @@ export default function ReviseTargetModal({
           </p>
         </div>
 
-        {/* Revised Overs Input (Always Visible) */}
         <div>
           <label className="mb-1.5 block font-bold uppercase tracking-wider text-fg-muted">
             Revised Total Match Overs *
@@ -114,14 +114,8 @@ export default function ReviseTargetModal({
             placeholder="e.g. 10 or 12"
             className="min-h-[44px] w-full rounded-xl border border-border bg-ink p-3 text-sm font-bold text-fg outline-none focus:border-electric"
           />
-          <p className="mt-1 text-[10px] text-fg-faint">
-            {isSecondInnings
-              ? "কমানো মোট ওভার সংখ্যা দিন (যেমন: ২০ ওভারের ম্যাচ কমে ১০ ওভার হলে ১০ লিখুন)।"
-              : "বৃষ্টির কারণে ১ম ইনিংসে ওভার কমানো হলে নতুন ওভার সংখ্যা লিখুন (যেমন: ২০ থেকে কমে ১২)।"}
-          </p>
         </div>
 
-        {/* Revised Target Input (2nd Innings Only) */}
         {isSecondInnings && (
           <div>
             <label className="mb-1.5 block font-bold uppercase tracking-wider text-fg-muted">
@@ -136,13 +130,9 @@ export default function ReviseTargetModal({
               placeholder="e.g. 85"
               className="min-h-[44px] w-full rounded-xl border border-border bg-ink p-3 text-sm font-bold text-signal-gold outline-none focus:border-signal-gold"
             />
-            <p className="mt-1 text-[10px] text-fg-faint">
-              আম্পায়ার বা আয়োজকদের নির্ধারিত নতুন সংশোধিত টার্গেট রান।
-            </p>
           </div>
         )}
 
-        {/* Live Preview */}
         <div className="flex items-center justify-between rounded-xl border border-border bg-ink p-3 text-xs font-semibold">
           <span className="text-fg-muted">Equation:</span>
           {isSecondInnings ? (
@@ -151,7 +141,7 @@ export default function ReviseTargetModal({
             </span>
           ) : (
             <span className="font-bold text-electric">
-              1st Innings revised to {maxOvers} overs per side
+              Match revised to {maxOvers} overs per side
             </span>
           )}
         </div>

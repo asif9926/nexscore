@@ -1,6 +1,7 @@
+// components/admin/WicketModal.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UserMinus } from "lucide-react";
 import { useToast } from "@/lib/context/ToastContext";
 import ResponsiveModal from "@/components/common/ResponsiveModal";
@@ -20,20 +21,51 @@ interface WicketModalProps {
   availableBatsmen: Player[];
 }
 
-export default function WicketModal({ isOpen, onClose, onConfirm, activeBatsmen, availableBatsmen }: WicketModalProps) {
+export default function WicketModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  activeBatsmen,
+  availableBatsmen,
+}: WicketModalProps) {
   const { showToast } = useToast();
-  const [outBatsmanId, setOutBatsmanId] = useState<string>(activeBatsmen.find((b) => b.onStrike)?.id || "");
+  const [outBatsmanId, setOutBatsmanId] = useState<string>("");
   const [newBatsmanId, setNewBatsmanId] = useState<string>("");
   const [dismissalType, setDismissalType] = useState<string>("Bowled");
   const [runsCompleted, setRunsCompleted] = useState<number>(0);
   const [isWideDelivery, setIsWideDelivery] = useState<boolean>(false);
 
-  const isFormValid = outBatsmanId.trim() !== "" && (availableBatsmen.length === 0 || newBatsmanId.trim() !== "");
+  // 🛡️ মডাল ওপেন হলে বর্তমান স্ট্রাইকারকে অটো-সিলেক্ট এবং ফর্ম স্টেট ফ্রেশ করা
+  useEffect(() => {
+    if (isOpen) {
+      const currentStriker = activeBatsmen.find((b) => b.onStrike);
+      setOutBatsmanId(currentStriker ? currentStriker.id : activeBatsmen[0]?.id || "");
+      setNewBatsmanId("");
+      setDismissalType("Bowled");
+      setRunsCompleted(0);
+      setIsWideDelivery(false);
+    }
+  }, [isOpen, activeBatsmen]);
+
+  // ডিসমিসাল টাইপ রান-আউট বা স্টাম্পড না হলে ওয়াইড বা রান রিসেট
+  const handleDismissalChange = (type: string) => {
+    setDismissalType(type);
+    if (type !== "Run Out") {
+      setRunsCompleted(0);
+    }
+    if (type !== "Run Out" && type !== "Stumped") {
+      setIsWideDelivery(false);
+    }
+  };
+
+  const isFormValid =
+    outBatsmanId.trim() !== "" &&
+    (availableBatsmen.length === 0 || newBatsmanId.trim() !== "");
 
   const handleSubmit = () => {
-    if (!outBatsmanId) return showToast("Please select the dismissed batsman.", "error");
+    if (!outBatsmanId) return showToast("কোন ব্যাটার আউট হয়েছেন তা সিলেক্ট করুন।", "error");
     if (availableBatsmen.length > 0 && !newBatsmanId) {
-      return showToast("Please select the next batsman in.", "error");
+      return showToast("পরবর্তী ব্যাটার নির্বাচন করুন।", "error");
     }
     onConfirm({
       outBatsmanId,
@@ -42,9 +74,6 @@ export default function WicketModal({ isOpen, onClose, onConfirm, activeBatsmen,
       runsCompleted,
       isWideDelivery,
     });
-    setNewBatsmanId("");
-    setRunsCompleted(0);
-    setIsWideDelivery(false);
   };
 
   return (
@@ -57,12 +86,14 @@ export default function WicketModal({ isOpen, onClose, onConfirm, activeBatsmen,
       footer={
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={!isFormValid}
             className="min-h-[44px] flex-1 rounded-xl bg-crimson px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-crimson/20 transition-opacity hover:opacity-90 disabled:opacity-40"
@@ -79,6 +110,7 @@ export default function WicketModal({ isOpen, onClose, onConfirm, activeBatsmen,
           {activeBatsmen.map((b) => (
             <button
               key={b.id}
+              type="button"
               onClick={() => setOutBatsmanId(b.id)}
               className={`min-h-[44px] rounded-xl border-2 px-3 py-2 text-xs font-bold transition-all ${
                 outBatsmanId === b.id
@@ -97,19 +129,19 @@ export default function WicketModal({ isOpen, onClose, onConfirm, activeBatsmen,
         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-fg-muted">Dismissal Type</label>
         <select
           value={dismissalType}
-          onChange={(e) => setDismissalType(e.target.value)}
+          onChange={(e) => handleDismissalChange(e.target.value)}
           className="min-h-[44px] w-full rounded-xl border border-border bg-ink p-3 text-xs text-fg outline-none focus:border-crimson"
         >
-          <option>Bowled</option>
-          <option>Caught</option>
-          <option>LBW</option>
-          <option>Run Out</option>
-          <option>Stumped</option>
-          <option>Hit Wicket</option>
+          <option value="Bowled">Bowled</option>
+          <option value="Caught">Caught</option>
+          <option value="LBW">LBW</option>
+          <option value="Run Out">Run Out</option>
+          <option value="Stumped">Stumped</option>
+          <option value="Hit Wicket">Hit Wicket</option>
         </select>
       </div>
 
-      {/* ৩. রান আউটের সময় রান সম্পন্ন হয়েছে কি না */}
+      {/* ৩. রান আউটের সময় সম্পন্ন রান */}
       {dismissalType === "Run Out" && (
         <div className="space-y-2 rounded-xl border border-border bg-ink/60 p-3">
           <label className="block text-xs font-bold uppercase tracking-wider text-fg-muted">
@@ -134,7 +166,7 @@ export default function WicketModal({ isOpen, onClose, onConfirm, activeBatsmen,
         </div>
       )}
 
-      {/* ৪. ওয়াইড বলে উইকেট (স্টাম্পিং/রানআউট) */}
+      {/* ৪. ওয়াইড ডেলিভারিতে স্টাম্পড বা রান-আউট */}
       {(dismissalType === "Stumped" || dismissalType === "Run Out") && (
         <label className="flex items-center gap-2 text-xs font-semibold text-fg cursor-pointer rounded-xl border border-border/80 bg-ink p-2.5">
           <input
@@ -143,7 +175,7 @@ export default function WicketModal({ isOpen, onClose, onConfirm, activeBatsmen,
             onChange={(e) => setIsWideDelivery(e.target.checked)}
             className="rounded border-border text-crimson"
           />
-          <span>Was this on a <b>Wide Delivery</b>? (+1 Wide extra added)</span>
+          <span>Was this on a <b>Wide Delivery</b>? (+1 Wide penalty added)</span>
         </label>
       )}
 

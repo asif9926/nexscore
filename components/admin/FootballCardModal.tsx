@@ -1,3 +1,4 @@
+// components/admin/FootballCardModal.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -38,22 +39,24 @@ export default function FootballCardModal({
   useEffect(() => {
     if (isOpen) {
       setCardType(defaultCardType);
-      setMinute(currentMinute || 1);
+      setMinute(Math.max(1, Math.min(130, currentMinute || 1)));
       setPlayerId("");
     }
   }, [isOpen, defaultCardType, currentMinute]);
 
   const handleSubmit = () => {
     if (!playerId) {
-      return showToast("প্লেয়ার সিলেক্ট করুন।", "error");
+      return showToast("দয়া করে কার্ডপ্রাপ্ত খেলোয়াড় সিলেক্ট করুন।", "error");
     }
 
     const player = squad.find((p) => p.id === playerId);
+    const validMinute = Math.max(1, Math.min(130, Number(minute) || 1));
+
     onConfirm({
       playerId,
       playerName: player?.name || "Player",
       cardType,
-      minute: Number(minute) || 1,
+      minute: validMinute,
     });
 
     onClose();
@@ -71,12 +74,14 @@ export default function FootballCardModal({
       footer={
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={!playerId}
             className={`min-h-[44px] flex-1 rounded-xl px-5 py-2.5 text-xs font-bold shadow-lg transition-opacity hover:opacity-90 disabled:opacity-40 ${
@@ -132,7 +137,7 @@ export default function FootballCardModal({
             min={1}
             max={130}
             value={minute}
-            onChange={(e) => setMinute(Number(e.target.value))}
+            onChange={(e) => setMinute(Math.max(1, Math.min(130, Number(e.target.value) || 1)))}
             className="min-h-[42px] w-28 rounded-xl border border-border bg-ink p-2.5 text-center font-mono text-base font-bold text-fg outline-none focus:border-electric"
           />
         </div>
@@ -142,25 +147,29 @@ export default function FootballCardModal({
           <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-fg-muted">
             Carded Player *
           </label>
-          <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-            {squad.map((player) => (
-              <button
-                key={player.id}
-                type="button"
-                onClick={() => setPlayerId(player.id)}
-                className={`flex min-h-[44px] flex-col justify-center rounded-xl border-2 p-2 text-left text-xs transition-all ${
-                  playerId === player.id
-                    ? isYellow
-                      ? "border-signal-gold bg-signal-gold/20 text-signal-gold font-bold shadow-sm"
-                      : "border-crimson bg-crimson/20 text-crimson font-bold shadow-sm"
-                    : "border-border bg-ink text-fg hover:border-fg-faint"
-                }`}
-              >
-                <span className="truncate">{player.name}</span>
-                <span className="text-[10px] text-fg-muted font-normal uppercase">{player.role}</span>
-              </button>
-            ))}
-          </div>
+          {squad.length === 0 ? (
+            <p className="text-xs text-fg-faint italic p-3 bg-ink rounded-xl border border-border">স্কোয়াডে কোনো খেলোয়াড় নেই</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+              {squad.map((player) => (
+                <button
+                  key={player.id}
+                  type="button"
+                  onClick={() => setPlayerId(player.id)}
+                  className={`flex min-h-[44px] flex-col justify-center rounded-xl border-2 p-2 text-left text-xs transition-all ${
+                    playerId === player.id
+                      ? isYellow
+                        ? "border-signal-gold bg-signal-gold/20 text-signal-gold font-bold shadow-sm"
+                        : "border-crimson bg-crimson/20 text-crimson font-bold shadow-sm"
+                      : "border-border bg-ink text-fg hover:border-fg-faint"
+                  }`}
+                >
+                  <span className="truncate">{player.name}</span>
+                  <span className="text-[10px] text-fg-muted font-normal uppercase">{player.role}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </ResponsiveModal>

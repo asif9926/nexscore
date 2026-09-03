@@ -1,6 +1,7 @@
 // components/overlay/cricket/BroadcastEngine.tsx
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 import { 
@@ -21,36 +22,81 @@ interface Props {
   theme?: string;
 }
 
+// 🛡️ নিখুঁত ওভার ডেলিভারি গণনাকারী (ওয়াইড বা নো-বল কখনোই ড্রপ হবে না)
+const getCurrentOverDeliveries = (recentBalls: any[], overs: string): any[] => {
+  if (!recentBalls || recentBalls.length === 0) return [];
+  const parts = (overs || "0.0").split(".");
+  const completedOvers = Number(parts[0] || 0);
+  const currentBalls = Number(parts[1] || 0);
+
+  if (completedOvers === 0 && currentBalls === 0) return [];
+
+  const targetLegalBalls = currentBalls === 0 ? 6 : currentBalls;
+  const deliveries: any[] = [];
+  let legalCount = 0;
+
+  for (let i = recentBalls.length - 1; i >= 0; i--) {
+    const ball = recentBalls[i];
+    deliveries.unshift(ball);
+
+    const isLegal = typeof ball === "object" && ball !== null
+      ? !ball.isExtra || ball.extraType === "Bye" || ball.extraType === "Leg Bye"
+      : !String(ball).includes("Wd") && !String(ball).includes("Nb");
+
+    if (isLegal) {
+      legalCount++;
+      if (legalCount >= targetLegalBalls) {
+        break;
+      }
+    }
+  }
+
+  return deliveries;
+};
+
 export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
   const { matchData, loading } = useMatchData(matchId);
+  const [activeTransientGraphic, setActiveTransientGraphic] = useState<string | null>(null);
+
+  const { meta, cricket } = matchData || {};
+  const activeGraphic = meta?.activeGraphic || "LOWER_THIRD";
+  const activeTheme = theme || meta?.activeTheme || "sky";
+
+  // 🛡️ ১২ সেকেন্ডের অটো-রিভার্ট স্পটলাইট গার্ড
+  useEffect(() => {
+    if (["BATSMAN_CARD", "BOWLER_CARD", "PARTNERSHIP_CARD", "MATCH_SUMMARY"].includes(activeGraphic)) {
+      setActiveTransientGraphic(activeGraphic);
+      const timer = setTimeout(() => {
+        setActiveTransientGraphic(null);
+      }, 12000);
+      return () => clearTimeout(timer);
+    } else {
+      setActiveTransientGraphic(null);
+    }
+  }, [activeGraphic, meta?.updatedAt]);
 
   if (loading || !matchData?.meta) return null;
 
-  const { meta, cricket } = matchData;
-  const activeGraphic = meta.activeGraphic || "LOWER_THIRD";
-  const activeTheme = theme || meta.activeTheme || "sky";
+  const currentDisplayedGraphic = activeTransientGraphic || (activeGraphic === "RESULT_POSTER" || activeGraphic === "INNINGS_BREAK" ? activeGraphic : "LOWER_THIRD");
 
-  // 🛡️ VISIBILITY FIX: স্কোরবোর্ড অফ থাকলেও ম্যাচ রেজাল্ট ও স্পটলাইট কার্ড কাজ করবে
-  const isScoreboardVisible = meta.showScoreboard !== false;
-  const hasSpecialGraphic = activeGraphic !== "LOWER_THIRD";
-  if (!isScoreboardVisible && !hasSpecialGraphic) return null;
+  const isScoreboardVisible = meta?.showScoreboard !== false;
+  if (!isScoreboardVisible && currentDisplayedGraphic === "LOWER_THIRD") return null;
 
   const isSecondInnings = cricket?.currentInnings === 2;
   const innings = isSecondInnings ? cricket?.innings2 : cricket?.innings1;
   const inn1 = cricket?.innings1;
   const inn2 = cricket?.innings2;
 
-  // 🛡️ DLS টার্গেট সাপোর্ট
   const targetScore = innings?.target || inn2?.target || (inn1?.score || 0) + 1;
 
-  const battingTeamName = innings?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
-  const bowlingTeamName = innings?.battingTeam === "teamA" ? meta.teamB : meta.teamA;
+  const battingTeamName = innings?.battingTeam === "teamA" ? meta?.teamA : meta?.teamB;
+  const bowlingTeamName = innings?.battingTeam === "teamA" ? meta?.teamB : meta?.teamA;
 
   const battingCode = getShortName(battingTeamName, "BAT");
   const bowlingCode = getShortName(bowlingTeamName, "BWL");
 
-  const inn1BattingTeam = inn1?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
-  const inn1BowlingTeam = inn1?.battingTeam === "teamA" ? meta.teamB : meta.teamA;
+  const inn1BattingTeam = inn1?.battingTeam === "teamA" ? meta?.teamA : meta?.teamB;
+  const inn1BowlingTeam = inn1?.battingTeam === "teamA" ? meta?.teamB : meta?.teamA;
 
   const inn1CRR = calculateCRR(inn1?.score || 0, inn1?.overs || "0.0");
   const maxOvers = cricket?.maxOvers || 20;
@@ -61,36 +107,33 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
   const squadLength = cricket?.squads?.[chasingSquadKey]?.length || 11;
   const maxWickets = getMaxWickets(squadLength);
 
-  // 🛡️ DLS ও অল-আউট ম্যাচ রেজাল্ট টেক্সট নিখুঁত গণনাকারী
   const getMatchResultText = () => {
     if (!inn1 || !inn2) return "MATCH COMPLETED";
 
     if (inn2.score >= targetScore) {
       const wicketsLeft = Math.max(0, maxWickets - (inn2.wickets || 0));
-      return `${inn1BowlingTeam.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
+      return `${inn1BowlingTeam?.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
     }
 
     const oversDec = oversToDecimal(inn2.overs);
     const isInn2Finished = inn2.isCompleted || oversDec >= maxOvers || (inn2.wickets || 0) >= maxWickets;
 
     if (isInn2Finished) {
-      // DLS টার্গেটে মার্জিন হবে targetScore - 1 - inn2.score
       const runMargin = Math.max(0, targetScore - 1 - inn2.score);
       if (runMargin > 0) {
-        return `${inn1BattingTeam.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
+        return `${inn1BattingTeam?.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
       }
       if (runMargin === 0) {
         return "MATCH TIED (SUPER OVER REQUIRED)";
       }
     }
 
-    return `${inn1BowlingTeam.toUpperCase()} NEED ${Math.max(targetScore - inn2.score, 0)} RUNS`;
+    return `${inn1BowlingTeam?.toUpperCase()} NEED ${Math.max(targetScore - inn2.score, 0)} RUNS`;
   };
 
   const batsmen = safeArray<Batsman>(innings?.batsmen);
   const bowlers = safeArray<Bowler>(innings?.bowlers);
 
-  // 🛡️ ডুপ্লিকেট নন-স্ট্রাইকার ফিল্টার
   const activeBatsmenList = batsmen.filter((b) => !b.isOut);
   const striker = activeBatsmenList.find((b) => b.onStrike) || activeBatsmenList[0] || {
     id: "empty-striker",
@@ -119,20 +162,15 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
   const totalFours = batsmen.reduce((sum, b) => sum + (b.fours || 0), 0);
   const totalSixes = batsmen.reduce((sum, b) => sum + (b.sixes || 0), 0);
 
-  // 🛡️ JS -0 SLICE FIX: ওভারের বর্তমান বল নিখুঁত স্লাইসিং
-  const recentBallsRaw = innings?.recentBalls || [];
-  const ballsCount = Number((innings?.overs || "0.0").split(".")[1] || 0);
-  const currentOverBalls = ballsCount === 0
-    ? (recentBallsRaw.length > 0 ? recentBallsRaw.slice(-6) : [])
-    : recentBallsRaw.slice(-ballsCount);
+  const currentOverBalls = getCurrentOverDeliveries(innings?.recentBalls || [], innings?.overs || "0.0");
 
   const renderBallCircle = (ball: any, idx: number, isDark = true) => {
     const label = String(typeof ball === "object" ? ball?.label ?? "" : ball ?? "");
-    let style = isDark ? "border-slate-700 bg-slate-900/80 text-white" : "border-slate-300 bg-slate-200 text-slate-800";
+    let style = isDark ? "border-slate-700 bg-slate-900 text-white" : "border-slate-300 bg-slate-200 text-slate-800";
     let text = label;
 
     if (label === "0" || label === "•" || label === "⊙") {
-      style = isDark ? "border-slate-800 bg-slate-950/70 text-slate-500" : "border-slate-300 bg-slate-100 text-slate-400";
+      style = isDark ? "border-slate-800 bg-slate-950 text-slate-500" : "border-slate-300 bg-slate-100 text-slate-400";
       text = "•";
     } else if (label === "4") {
       style = "border-sky-400 bg-sky-500 text-white font-black";
@@ -140,20 +178,22 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
       style = "border-amber-400 bg-amber-500 text-slate-950 font-black";
     } else if (label === "W") {
       style = "border-rose-500 bg-rose-600 text-white font-black";
+    } else if (label.includes("Wd") || label.includes("Nb")) {
+      style = "border-purple-400 bg-purple-600 text-white font-black";
     }
 
     return (
-      <span key={idx} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${style}`}>
+      <span key={idx} className={`flex h-5 min-w-[20px] px-1 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${style}`}>
         {text}
       </span>
     );
   };
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-30 font-sans select-none">
+    <div className="pointer-events-none fixed inset-0 z-30 font-sans select-none [transform:translateZ(0)]">
       <AnimatePresence mode="wait">
         {/* INNINGS BREAK POSTER */}
-        {activeGraphic === "INNINGS_BREAK" && (
+        {currentDisplayedGraphic === "INNINGS_BREAK" && (
           <motion.div
             key="innings-break-poster"
             initial={{ scale: 0.92, opacity: 0 }}
@@ -167,7 +207,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
               </div>
 
               <h2 className="mb-4 text-xl font-black text-white sm:text-2xl">
-                {meta.teamA} <span className="text-amber-400">VS</span> {meta.teamB}
+                {meta?.teamA} <span className="text-amber-400">VS</span> {meta?.teamB}
               </h2>
 
               <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
@@ -209,7 +249,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
         )}
 
         {/* RESULT POSTER */}
-        {activeGraphic === "RESULT_POSTER" && (
+        {currentDisplayedGraphic === "RESULT_POSTER" && (
           <motion.div
             key="result-poster"
             initial={{ scale: 0.9, opacity: 0 }}
@@ -240,7 +280,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
                 <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left">
                   <div className="text-[10px] font-bold uppercase text-slate-400">{inn1BowlingTeam}</div>
                   <div className="font-score text-3xl font-black text-sky-400 my-0.5">
-                    {inn2 ? `${inn2.score}/${inn2.wickets}` : "Did not bat"}
+                    {inn2 && (inn2.score > 0 || inn2.overs !== "0.0") ? `${inn2.score}/${inn2.wickets}` : "Yet to bat"}
                   </div>
                   <div className="text-[11px] text-slate-400">
                     Overs: <strong className="text-white">{inn2?.overs || "0.0"}</strong> (Target: {targetScore})
@@ -249,14 +289,14 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
               </div>
 
               <div className="font-broadcast text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
-                {meta.tournament || "SPORTS BROADCAST SERIES"} • {meta.venue || "MATCH CENTER"}
+                {meta?.tournament || "SPORTS BROADCAST SERIES"} • {meta?.venue || "MATCH CENTER"}
               </div>
             </div>
           </motion.div>
         )}
 
         {/* BATTER SPOTLIGHT */}
-        {activeGraphic === "BATSMAN_CARD" && striker && (
+        {currentDisplayedGraphic === "BATSMAN_CARD" && striker && (
           <motion.div
             key="batsman-card"
             initial={{ y: 100, opacity: 0 }}
@@ -286,7 +326,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
         )}
 
         {/* BOWLER SPOTLIGHT */}
-        {activeGraphic === "BOWLER_CARD" && activeBowler && (
+        {currentDisplayedGraphic === "BOWLER_CARD" && activeBowler && (
           <motion.div
             key="bowler-card"
             initial={{ y: 100, opacity: 0 }}
@@ -316,7 +356,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
         )}
 
         {/* PARTNERSHIP SPOTLIGHT */}
-        {activeGraphic === "PARTNERSHIP_CARD" && striker && nonStriker && (
+        {currentDisplayedGraphic === "PARTNERSHIP_CARD" && striker && nonStriker && (
           <motion.div
             key="partnership-card"
             initial={{ y: 100, opacity: 0 }}
@@ -346,7 +386,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
         )}
 
         {/* MATCH SUMMARY SPOTLIGHT */}
-        {activeGraphic === "MATCH_SUMMARY" && (
+        {currentDisplayedGraphic === "MATCH_SUMMARY" && (
           <motion.div
             key="match-summary-card"
             initial={{ y: 100, opacity: 0 }}
@@ -379,7 +419,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
         )}
 
         {/* LOWER THIRD THEMES */}
-        {activeGraphic === "LOWER_THIRD" && isScoreboardVisible && (
+        {currentDisplayedGraphic === "LOWER_THIRD" && isScoreboardVisible && (
           <>
             {/* THEME 1: SKY / SONY (6-Block) */}
             {activeTheme === "sky" && (
@@ -477,7 +517,9 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
                       <div className="font-bold uppercase text-white truncate max-w-[110px]">{activeBowler?.name}</div>
                       <div className="font-mono text-[10px] font-bold text-amber-400">{activeBowler?.wickets}-{activeBowler?.runs} <span className="text-slate-400">({activeBowler?.overs})</span></div>
                     </div>
-                    <div className="flex items-center gap-1 pl-2">{currentOverBalls.map((b, i) => renderBallCircle(b, i, true))}</div>
+                    <div className="flex items-center gap-1 pl-2">
+                      {currentOverBalls.length > 0 ? currentOverBalls.map((b, i) => renderBallCircle(b, i, true)) : <span className="text-[10px] text-slate-500">Over Start</span>}
+                    </div>
                   </div>
                   <div className="flex min-w-[70px] items-center justify-center bg-[#0c1018] border-l border-slate-800 px-3 font-broadcast text-2xl font-black text-slate-300">{bowlingCode}</div>
                 </div>
@@ -524,7 +566,9 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
                       <div className="font-bold uppercase text-white truncate max-w-[110px]">{activeBowler?.name}</div>
                       <div className="font-mono text-[10px] font-bold text-lime-400">{activeBowler?.wickets}-{activeBowler?.runs} <span className="text-slate-400 font-normal">({activeBowler?.overs})</span></div>
                     </div>
-                    <div className="flex items-center gap-1 pl-2">{currentOverBalls.map((b, i) => renderBallCircle(b, i, true))}</div>
+                    <div className="flex items-center gap-1 pl-2">
+                      {currentOverBalls.length > 0 ? currentOverBalls.map((b, i) => renderBallCircle(b, i, true)) : <span className="text-[10px] text-slate-500">Over Start</span>}
+                    </div>
                   </div>
                   <div className="flex min-w-[70px] items-center justify-center bg-[#0f172a] px-3 font-broadcast text-2xl font-black text-lime-400/80">{bowlingCode}</div>
                 </div>
@@ -573,7 +617,9 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
                       <div className="font-bold uppercase text-[#0c2340] truncate max-w-[110px]">{activeBowler?.name}</div>
                       <div className="font-mono text-[10px] font-bold text-emerald-700">{activeBowler?.wickets}/{activeBowler?.runs} <span className="text-slate-500 font-normal">({activeBowler?.overs})</span></div>
                     </div>
-                    <div className="flex items-center gap-1 pl-2">{currentOverBalls.map((b, i) => renderBallCircle(b, i, false))}</div>
+                    <div className="flex items-center gap-1 pl-2">
+                      {currentOverBalls.length > 0 ? currentOverBalls.map((b, i) => renderBallCircle(b, i, false)) : <span className="text-[10px] text-slate-500">Over Start</span>}
+                    </div>
                   </div>
                   <div className="flex min-w-[70px] items-center justify-center bg-[#0c2340] px-3 font-broadcast text-2xl font-black text-slate-300">{bowlingCode}</div>
                 </div>
@@ -589,7 +635,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
                 exit={{ y: 60, opacity: 0 }}
                 className="fixed bottom-6 left-0 right-0 flex justify-center px-4"
               >
-                <div className="chyron flex h-[52px] w-full max-w-[1040px] items-stretch border border-amber-500/80 bg-slate-950/95 shadow-[0_0_30px_rgba(245,158,11,0.25)] backdrop-blur-xl">
+                <div className="flex h-[52px] w-full max-w-[1040px] items-stretch border border-amber-500/80 bg-slate-950/95 shadow-[0_0_30px_rgba(245,158,11,0.25)] backdrop-blur-xl rounded-xl overflow-hidden">
                   <div className="flex min-w-[70px] items-center justify-center bg-gradient-to-r from-amber-500 to-orange-500 px-3 font-broadcast text-2xl font-black text-slate-950">{battingCode}</div>
                   <div className="flex min-w-[130px] items-center justify-center border-r border-slate-800 px-3.5">
                     <div>
@@ -622,7 +668,9 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
                       <div className="font-bold uppercase text-white truncate max-w-[110px]">{activeBowler?.name}</div>
                       <div className="font-mono text-[10px] font-bold text-emerald-400">{activeBowler?.wickets}-{activeBowler?.runs} <span className="text-slate-400 font-normal">({activeBowler?.overs})</span></div>
                     </div>
-                    <div className="flex items-center gap-1 pl-2">{currentOverBalls.map((b, i) => renderBallCircle(b, i, true))}</div>
+                    <div className="flex items-center gap-1 pl-2">
+                      {currentOverBalls.length > 0 ? currentOverBalls.map((b, i) => renderBallCircle(b, i, true)) : <span className="text-[10px] text-slate-500">Over Start</span>}
+                    </div>
                   </div>
                   <div className="flex min-w-[70px] items-center justify-center bg-slate-900 px-3 font-broadcast text-2xl font-black text-slate-300">{bowlingCode}</div>
                 </div>
@@ -655,7 +703,7 @@ export default function BroadcastEngine({ matchId, theme = "sky" }: Props) {
                         </span>
                       </div>
                       <div className="text-[10px] font-bold text-slate-400">
-                        {meta.tournament || "Local Tournament"}
+                        {meta?.tournament || "Local Tournament"}
                       </div>
                     </div>
                   </div>

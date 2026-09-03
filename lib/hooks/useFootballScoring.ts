@@ -5,7 +5,7 @@ import { useState } from "react";
 import { commitActionAtomic } from "@/lib/firebase/actions";
 import { useToast } from "@/lib/context/ToastContext";
 import { useFootballClock } from "./useFootballClock";
-import type { MatchData } from "@/lib/types/match";
+import type { MatchData, FootballEvent } from "@/lib/types/match";
 
 export function useFootballScoring(matchData: MatchData | null) {
   const { showToast } = useToast();
@@ -49,13 +49,13 @@ export function useFootballScoring(matchData: MatchData | null) {
       await commitActionAtomic(matchId, updates, "Toggle Football Clock", matchData);
     } catch (error) {
       console.error("Failed to toggle timer:", error);
-      showToast("Timer update failed.", "error");
+      showToast("টাইমার আপডেট ব্যর্থ হয়েছে।", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // ২. হাফ পরিবর্তন (রানিং টাইম যোগ করা নিশ্চিত)
+  // ২. হাফ পরিবর্তন
   const handleHalfChange = async (halfLabel: string) => {
     if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
@@ -66,7 +66,6 @@ export function useFootballScoring(matchData: MatchData | null) {
       const isHalfTime = halfLabel === "HALF TIME";
       const isFullTime = halfLabel === "FULL TIME";
 
-      // 🛡️ FIX: রানিং থাকা অবস্থায় হাফ পরিবর্তন করলে অতিরিক্ত সময় হিসাব করা
       const liveAddedSeconds =
         football.isRunning && football.startedAt ? Math.floor((now - football.startedAt) / 1000) : 0;
       let newElapsed = (football.elapsedSeconds || 0) + liveAddedSeconds;
@@ -75,7 +74,7 @@ export function useFootballScoring(matchData: MatchData | null) {
       let newStartedAt = football.startedAt;
 
       if (isSecondHalf && newElapsed < 45 * 60) {
-        newElapsed = 45 * 60; // ৪৫ মিনিটে শুরু
+        newElapsed = 45 * 60;
       }
 
       if (isHalfTime || isFullTime) {
@@ -83,7 +82,7 @@ export function useFootballScoring(matchData: MatchData | null) {
         newStartedAt = null;
       }
 
-      const updates = {
+      const updates: Record<string, any> = {
         [`matches/${matchId}/football/half`]: halfLabel,
         [`matches/${matchId}/football/currentHalf`]: isSecondHalf || isFullTime ? 2 : 1,
         [`matches/${matchId}/football/isRunning`]: newIsRunning,
@@ -91,11 +90,15 @@ export function useFootballScoring(matchData: MatchData | null) {
         [`matches/${matchId}/football/elapsedSeconds`]: newElapsed,
       };
 
+      if (isFullTime) {
+        updates[`matches/${matchId}/meta/activeGraphic`] = "RESULT_POSTER";
+      }
+
       await commitActionAtomic(matchId, updates, `Change Half to ${halfLabel}`, matchData);
-      showToast(`Half changed to ${halfLabel}`, "info");
+      showToast(`হাফ পরিবর্তিত: ${halfLabel}`, "info");
     } catch (error) {
       console.error("Failed to change half:", error);
-      showToast("Failed to change half.", "error");
+      showToast("হাফ পরিবর্তন ব্যর্থ হয়েছে।", "error");
     } finally {
       setIsProcessing(false);
     }
@@ -109,7 +112,7 @@ export function useFootballScoring(matchData: MatchData | null) {
       scorerName: string;
       assistId?: string;
       assistName?: string;
-      minute: number;
+      minute?: number;
     }
   ) => {
     if (!matchId || !football || isProcessing) return;
@@ -117,6 +120,7 @@ export function useFootballScoring(matchData: MatchData | null) {
 
     try {
       const now = Date.now();
+      const goalMinute = details.minute || footballClock.minute;
       const currentScoreA = football.scoreA || 0;
       const currentScoreB = football.scoreB || 0;
 
@@ -124,23 +128,20 @@ export function useFootballScoring(matchData: MatchData | null) {
       const newScoreB = team === "B" ? currentScoreB + 1 : currentScoreB;
 
       const currentHalfKey = football.currentHalf === 2 ? "half2" : "half1";
-      const halfData = football[currentHalfKey] || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
+      const currentHalfData = football[currentHalfKey] || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
 
       const updatedHalf = {
-        ...halfData,
-        goalsA: team === "A" ? (halfData.goalsA || 0) + 1 : halfData.goalsA || 0,
-        goalsB: team === "B" ? (halfData.goalsB || 0) + 1 : halfData.goalsB || 0,
+        ...currentHalfData,
+        goalsA: team === "A" ? (currentHalfData.goalsA || 0) + 1 : currentHalfData.goalsA || 0,
+        goalsB: team === "B" ? (currentHalfData.goalsB || 0) + 1 : currentHalfData.goalsB || 0,
+        possession: currentHalfData.possession || { teamA: 50, teamB: 50 },
       };
 
-      const newEvent = {
-        id: `ev_${now}_${Math.random().toString(36).substring(2, 6)}`,
+      const newEvent: FootballEvent = {
+        id: `ev_${now}_${Math.random().toString(36).substring(2, 7)}`,
         type: "goal",
         team: team === "A" ? "teamA" : "teamB",
-        minute: details.minute,
-        scorerId: details.scorerId,
-        scorerName: details.scorerName,
-        assistId: details.assistId || null,
-        assistName: details.assistName || null,
+        minute: goalMinute,
         timestamp: now,
       };
 
@@ -154,10 +155,10 @@ export function useFootballScoring(matchData: MatchData | null) {
       };
 
       await commitActionAtomic(matchId, updates, `Goal for Team ${team} by ${details.scorerName}`, matchData);
-      showToast(`⚽ GOAL! ${details.scorerName} (${details.minute}')`, "success");
+      showToast(`⚽ GOAL! ${details.scorerName} (${goalMinute}')`, "success");
     } catch (error) {
       console.error("Error recording goal:", error);
-      showToast("Failed to record goal.", "error");
+      showToast("গোল যোগ করতে ব্যর্থ হয়েছে।", "error");
     } finally {
       setIsProcessing(false);
     }
@@ -170,7 +171,7 @@ export function useFootballScoring(matchData: MatchData | null) {
       playerId: string;
       playerName: string;
       cardType: "yellow" | "red";
-      minute: number;
+      minute?: number;
     }
   ) => {
     if (!matchId || !football || isProcessing) return;
@@ -178,18 +179,17 @@ export function useFootballScoring(matchData: MatchData | null) {
 
     try {
       const now = Date.now();
+      const cardMinute = details.minute || footballClock.minute;
       const isRed = details.cardType === "red";
 
       const currentRed = team === "A" ? football.redCardsA || 0 : football.redCardsB || 0;
       const currentYellow = team === "A" ? football.yellowCardsA || 0 : football.yellowCardsB || 0;
 
-      const newEvent = {
-        id: `ev_${now}_${Math.random().toString(36).substring(2, 6)}`,
+      const newEvent: FootballEvent = {
+        id: `ev_${now}_${Math.random().toString(36).substring(2, 7)}`,
         type: isRed ? "red_card" : "yellow_card",
         team: team === "A" ? "teamA" : "teamB",
-        minute: details.minute,
-        playerId: details.playerId,
-        playerName: details.playerName,
+        minute: cardMinute,
         timestamp: now,
       };
 
@@ -202,16 +202,16 @@ export function useFootballScoring(matchData: MatchData | null) {
       };
 
       await commitActionAtomic(matchId, updates, `${isRed ? "Red" : "Yellow"} Card for ${details.playerName}`, matchData);
-      showToast(`${isRed ? "🟥 Red Card" : "🟨 Yellow Card"} — ${details.playerName}`, isRed ? "error" : "info");
+      showToast(`${isRed ? "🟥 লাল কার্ড" : "🟨 হলুদ কার্ড"} — ${details.playerName}`, isRed ? "error" : "info");
     } catch (error) {
       console.error("Error recording card:", error);
-      showToast("Failed to record card.", "error");
+      showToast("কার্ড যোগ করতে ব্যর্থ হয়েছে।", "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // ৫. পজেশন অ্যাডজাস্টমেন্ট
+  // ৫. পজেশন অ্যাডজাস্টমেন্ট (Safe Fallback সহ)
   const handlePossessionAdjust = async (team: "A" | "B", delta: number) => {
     if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
@@ -219,9 +219,10 @@ export function useFootballScoring(matchData: MatchData | null) {
     try {
       const currentHalfKey = football.currentHalf === 2 ? "half2" : "half1";
       const halfData = football[currentHalfKey] || { goalsA: 0, goalsB: 0, possession: { teamA: 50, teamB: 50 } };
+      const currentPossession = halfData.possession || { teamA: 50, teamB: 50 };
 
-      let currentVal = team === "A" ? halfData.possession.teamA : halfData.possession.teamB;
-      let targetVal = Math.min(95, Math.max(5, currentVal + delta));
+      const currentVal = team === "A" ? currentPossession.teamA : currentPossession.teamB;
+      const targetVal = Math.min(95, Math.max(5, currentVal + delta));
 
       const newPossession = {
         teamA: team === "A" ? targetVal : 100 - targetVal,

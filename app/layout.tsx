@@ -1,25 +1,21 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Anton, Rajdhani } from "next/font/google";
-import { MatchDataProvider } from "@/lib/context/MatchDataContext";
 import { ToastProvider } from "@/lib/context/ToastContext";
 import "./globals.css";
 
-// UI / body font
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-// Scoreboard font
 const anton = Anton({
   variable: "--font-anton",
   subsets: ["latin"],
   weight: "400",
 });
 
-// Broadcast labels font
 const rajdhani = Rajdhani({
   variable: "--font-rajdhani",
   subsets: ["latin"],
@@ -35,17 +31,15 @@ const getBaseUrl = () => {
   return process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
 };
 
-const siteUrl = getBaseUrl();
-
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(getBaseUrl()),
   title: "NexScore — Live Sports Broadcasting & Scoring",
   description: "Real-time cricket & football scoring with OBS-ready broadcast overlays.",
   keywords: ["cricket scoring", "football scoring", "live sports broadcast", "OBS overlay", "live scoreboard"],
 };
 
 export const viewport: Viewport = {
-  themeColor: "#06080F",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -60,13 +54,20 @@ export default function RootLayout({
       className={`${spaceGrotesk.variable} ${anton.variable} ${rajdhani.variable} antialiased`}
     >
       <head>
-        {/* ☀️ FOUT প্রিভেনশন স্ক্রিপ্ট: পেজ পেইন্ট হওয়ার আগেই থিম ক্লাস সেট করবে */}
+        {/* ☀️ ডিফল্ট লাইট মোড স্ক্রিপ্ট: প্রথমবার ভিজিট করলেই Sunlight মোড অন হবে */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function() {
               try {
-                if (localStorage.getItem('nexscore_sunlight') === 'true') {
+                // 🛡️ OBS Overlay লিংকে কখনোই Sunlight ক্লাস যুক্ত হবে না
+                if (window.location.pathname.indexOf('/overlay') !== -1) return;
+
+                // নতুন ইউজারের ক্ষেত্রে saved হবে null, তাই ডিফল্ট হিসেবে লাইট মোড চালু হবে
+                var saved = localStorage.getItem('nexscore_sunlight');
+                if (saved !== 'false') {
                   document.documentElement.classList.add('sunlight');
+                } else {
+                  document.documentElement.classList.remove('sunlight');
                 }
               } catch (e) {}
             })()`,
@@ -75,7 +76,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex flex-col w-full max-w-full overflow-x-clip">
         <ToastProvider>
-          <MatchDataProvider>{children}</MatchDataProvider>
+          {children}
         </ToastProvider>
       </body>
     </html>

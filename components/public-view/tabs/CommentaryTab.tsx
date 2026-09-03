@@ -1,45 +1,62 @@
+// components/public-view/tabs/CommentaryTab.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MatchData } from "@/lib/types/match";
 import { Activity } from "lucide-react";
 import MatchEventsList from "../MatchEventsList";
 
 export default function CommentaryTab({ matchData }: { matchData: MatchData }) {
   const [filter, setFilter] = useState<"all" | "boundaries" | "wickets">("all");
-  const { meta, cricket, football } = matchData;
+  const { meta, cricket, football } = matchData || {};
 
-  // 🛡️ ইনিংস সুইচিং স্টেট (২য় ইনিংসে গেলেও ১ম ইনিংসের কমেন্টারি দেখার সুবিধা)
-  const [activeInningsTab, setActiveInningsTab] = useState<1 | 2>(
-    cricket?.currentInnings || 1
-  );
+  const [activeInningsTab, setActiveInningsTab] = useState<1 | 2>(cricket?.currentInnings || 1);
 
-  if (meta.sport !== "cricket") {
+  useEffect(() => {
+    if (cricket?.currentInnings) {
+      setActiveInningsTab(cricket.currentInnings);
+    }
+  }, [cricket?.currentInnings]);
+
+  if (meta?.sport !== "cricket") {
     return (
       <div className="space-y-5 rounded-3xl border border-border bg-panel p-6 shadow-xl">
         <h3 className="flex items-center gap-2 border-b border-border pb-4 text-base font-bold text-fg">
           <Activity className="h-5 w-5 text-pitch-green" />
-          <span>Match Commentary</span>
+          <span>Match Events &amp; Timeline</span>
         </h3>
-        <MatchEventsList events={football?.events || []} teamAName={meta.teamA} teamBName={meta.teamB} />
+        <MatchEventsList events={football?.events || []} teamAName={meta?.teamA || "Team A"} teamBName={meta?.teamB || "Team B"} />
       </div>
     );
   }
 
   if (!cricket) return null;
 
-  const selectedInnings = activeInningsTab === 2 ? cricket.innings2 : cricket.innings1;
+  const inn1 = cricket.innings1;
+  const inn2 = cricket.innings2;
+
+  const hasSecondInnings = Boolean(
+    inn2 && ((inn2?.score || 0) > 0 || inn2?.overs !== "0.0" || cricket.currentInnings === 2)
+  );
+
+  const selectedInnings = activeInningsTab === 2 && hasSecondInnings ? inn2 : inn1;
   const recentBalls = selectedInnings?.recentBalls || [];
 
+  const team1Name = inn1?.battingTeam === "teamA" ? meta.teamA : meta.teamB;
+  const team2Name = inn1?.battingTeam === "teamA" ? meta.teamB : meta.teamA;
+
+  // 🛡️ নির্ভুল বাউন্ডারি ও উইকেট ফিল্টারিং
   const filteredCommentary = recentBalls
     .filter((ball: any) => {
-      if (typeof ball === "string") {
-        if (filter === "boundaries") return ball === "4" || ball === "6";
-        if (filter === "wickets") return ball === "W";
-        return true;
-      }
-      if (filter === "boundaries") return ball.runs >= 4;
-      if (filter === "wickets") return ball.isWicket;
+      const label = typeof ball === "string" ? ball : ball?.label || "";
+      const isWicket = typeof ball === "object" ? !!ball.isWicket : label === "W";
+      const isBoundary =
+        label === "4" ||
+        label === "6" ||
+        (typeof ball === "object" && !ball.isExtra && (ball.runs === 4 || ball.runs === 6));
+
+      if (filter === "boundaries") return isBoundary;
+      if (filter === "wickets") return isWicket;
       return true;
     })
     .slice()
@@ -47,7 +64,7 @@ export default function CommentaryTab({ matchData }: { matchData: MatchData }) {
 
   return (
     <div className="space-y-5 rounded-3xl border border-border bg-panel p-6 shadow-xl">
-      {/* Top Header & Filters */}
+      {/* Header & Filters */}
       <div className="flex flex-col items-start justify-between gap-4 border-b border-border pb-4 md:flex-row md:items-center">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-fg">
@@ -58,8 +75,8 @@ export default function CommentaryTab({ matchData }: { matchData: MatchData }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Innings Switcher (২য় ইনিংস চালু হলে বা শেষ হলে দৃশ্যমান হবে) */}
-          {cricket.currentInnings === 2 && (
+          {/* Innings Switcher with Team Names */}
+          {hasSecondInnings && (
             <div className="flex rounded-full border border-border bg-ink p-1 text-xs">
               <button
                 onClick={() => setActiveInningsTab(1)}
@@ -67,7 +84,7 @@ export default function CommentaryTab({ matchData }: { matchData: MatchData }) {
                   activeInningsTab === 1 ? "bg-panel-raised text-electric" : "text-fg-muted hover:text-fg"
                 }`}
               >
-                1st Inn
+                1st Inn ({team1Name})
               </button>
               <button
                 onClick={() => setActiveInningsTab(2)}
@@ -75,7 +92,7 @@ export default function CommentaryTab({ matchData }: { matchData: MatchData }) {
                   activeInningsTab === 2 ? "bg-electric text-white" : "text-fg-muted hover:text-fg"
                 }`}
               >
-                2nd Inn
+                2nd Inn ({team2Name})
               </button>
             </div>
           )}
@@ -97,45 +114,58 @@ export default function CommentaryTab({ matchData }: { matchData: MatchData }) {
         </div>
       </div>
 
-      {/* Commentary Timeline List */}
+      {/* Commentary List */}
       <div className="max-h-[500px] space-y-3 overflow-y-auto pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {filteredCommentary.length === 0 ? (
           <div className="p-8 text-center text-sm text-fg-faint">কোনো বলের ধারাভাষ্য পাওয়া যায়নি।</div>
         ) : (
           filteredCommentary.map((ball: any, idx: number) => {
-            // সেফ ইউনিক কি (রি-রেন্ডার অপ্টিমাইজেশন)
-            const itemKey = ball.timestamp || `${ball.ballNumber || idx}-${idx}`;
+            const itemKey = `${ball.ballNumber || idx}_${ball.timestamp || idx}`;
 
-            // Legacy Fallback (স্ট্রিং ফরম্যাটের জন্য)
+            // Legacy Fallback
             if (typeof ball === "string") {
-              let bgStyle = "border-border bg-ink";
-              let badgeStyle = "border border-border bg-panel-raised text-fg-muted";
-              let text = `${ball} Runs scored`;
-
-              if (ball === "W") {
-                bgStyle = "border-crimson/30 bg-crimson/10";
-                badgeStyle = "bg-crimson text-white";
-                text = "WICKET! The batsman departs.";
-              } else if (ball === "4" || ball === "6") {
-                bgStyle = "border-electric/30 bg-electric/10";
-                badgeStyle = "bg-electric text-white";
-                text = ball === "4" ? "FOUR! Beautiful shot." : "SIX! Massive hit!";
-              }
+              const isW = ball === "W";
+              const is4 = ball === "4";
+              const is6 = ball === "6";
 
               return (
-                <div key={itemKey} className={`rounded-2xl border p-4 text-sm transition-colors ${bgStyle}`}>
+                <div key={itemKey} className="rounded-2xl border border-border bg-ink p-4 text-sm">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="font-bold text-fg-muted">Recent Action</span>
-                    <span className={`rounded-full px-2.5 py-0.5 font-broadcast text-xs font-bold ${badgeStyle}`}>
-                      {ball === "W" ? "WICKET" : `${ball} RUNS`}
+                    <span className={`rounded-full px-2.5 py-0.5 font-broadcast text-xs font-bold ${
+                      isW ? "bg-crimson text-white" : is4 || is6 ? "bg-electric text-white" : "bg-panel-raised text-fg"
+                    }`}>
+                      {isW ? "WICKET" : `${ball} RUNS`}
                     </span>
                   </div>
-                  <p className="text-xs leading-relaxed text-fg-muted sm:text-sm">{text}</p>
+                  <p className="text-xs text-fg-muted">{ball} runs scored.</p>
                 </div>
               );
             }
 
-            // Real-time Object View (commentaryGenerator Output)
+            // Real-time Ball Commentary Object
+            const isWicket = !!ball.isWicket;
+            const isFour = ball.label === "4" || (!ball.isExtra && ball.runs === 4);
+            const isSix = ball.label === "6" || (!ball.isExtra && ball.runs === 6);
+            const isExtra = !!ball.isExtra;
+
+            let badgeColor = "border border-border bg-panel-raised text-fg/90";
+            let badgeText = `${ball.runs} RUNS`;
+
+            if (isWicket) {
+              badgeColor = "bg-crimson text-white";
+              badgeText = "WICKET";
+            } else if (isFour) {
+              badgeColor = "bg-electric text-white";
+              badgeText = "FOUR";
+            } else if (isSix) {
+              badgeColor = "bg-signal-gold text-ink font-black";
+              badgeText = "SIX";
+            } else if (isExtra) {
+              badgeColor = "bg-purple-600/30 text-purple-300 border border-purple-500/40";
+              badgeText = ball.extraType ? ball.extraType.toUpperCase() : "EXTRA";
+            }
+
             return (
               <div
                 key={itemKey}
@@ -146,23 +176,14 @@ export default function CommentaryTab({ matchData }: { matchData: MatchData }) {
                     <span className="rounded-full border border-border bg-panel-raised px-2.5 py-0.5 font-mono text-xs font-bold text-electric">
                       Ov {ball.ballNumber}
                     </span>
-                    <span className="font-semibold text-fg">
+                    <span className="font-semibold text-fg text-xs sm:text-sm">
                       {ball.bowlerName} to {ball.batsmanName}
                     </span>
                   </div>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 font-broadcast text-xs font-bold ${
-                      ball.isWicket
-                        ? "bg-crimson text-white"
-                        : ball.runs >= 4
-                          ? "bg-electric text-white"
-                          : "border border-border bg-panel-raised text-fg/80"
-                    }`}
-                  >
-                    {ball.isWicket ? "WICKET" : `${ball.runs} RUNS`}
+                  <span className={`rounded-full px-2.5 py-0.5 font-broadcast text-xs font-bold ${badgeColor}`}>
+                    {badgeText}
                   </span>
                 </div>
-                {/* মিসিং টেক্সটের জন্য অটোমেটিক ফলব্যাক */}
                 <p className="pl-1 text-xs leading-relaxed text-fg-muted sm:text-sm">
                   {ball.text || `${ball.runs} runs scored from this delivery.`}
                 </p>
