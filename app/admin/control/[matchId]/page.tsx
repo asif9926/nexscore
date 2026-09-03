@@ -79,6 +79,7 @@ export default function DynamicControlDashboard() {
     activeBatsmen,
     availableBatsmen,
     activeBowlerObj,
+    restrictedBowlerId, // 🛡️ ফিক্সড: এখানে যুক্ত করা হয়েছে
     isWicketModalOpen,
     setIsWicketModalOpen,
     isExtrasModalOpen,
@@ -257,7 +258,6 @@ export default function DynamicControlDashboard() {
       if (cricket?.currentInnings === 2 && typeof revisedTarget === "number") {
         updates[`matches/${matchId}/cricket/innings2/target`] = revisedTarget;
         
-        // যদি রিভাইজড টার্গেট অলরেডি অর্জিত হয়ে থাকে
         const currentScore = cricket?.innings2?.score || 0;
         if (currentScore >= revisedTarget) {
           updates[`matches/${matchId}/cricket/innings2/isCompleted`] = true;
@@ -360,6 +360,7 @@ export default function DynamicControlDashboard() {
             onUndo={() => undoLastAction(matchId)}
             bowlingSquad={bowlingSquad}
             activeBowlerId={activeBowlerObj?.id}
+            restrictedBowlerId={restrictedBowlerId}
             isMandatory={false}
           />
           <InningsBreakModal
@@ -409,7 +410,7 @@ export default function DynamicControlDashboard() {
         </>
       )}
 
-      {/* 🚨 ১ ইনিংস শেষ হলে লাইভ আনলক ব্যানার */}
+      {/* 🚨 ১ম ইনিংস শেষ হলে ব্যানার */}
       {isFirstInningsCompleted && (
         <div className="flex items-center justify-between rounded-2xl border-2 border-signal-gold bg-signal-gold/15 p-4 shadow-lg animate-pulse">
           <div>
@@ -581,7 +582,7 @@ export default function DynamicControlDashboard() {
         )}
       </div>
 
-      {/* ================= TABS CONTENT (Zero Unmount State Preservation) ================= */}
+      {/* ================= TABS CONTENT ================= */}
       <div className={activeTab === "scoring" ? "space-y-4" : "hidden"}>
         <div className="rounded-2xl border border-border bg-panel p-4 shadow-lg sm:p-5">
           <div className="mb-4 flex items-center justify-between">
@@ -827,6 +828,7 @@ export default function DynamicControlDashboard() {
           activeTheme={meta.activeTheme}
           customLogoUrl={meta.customLogoUrl}
           customLogoLeftUrl={(meta as any).customLogoLeftUrl}
+          logoBgStyle={(meta as any).logoBgStyle || "transparent"}
         />
         <OverlayLinksCard matchId={matchId} sport={meta.sport} theme={meta.activeTheme} />
       </div>

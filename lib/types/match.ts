@@ -77,15 +77,16 @@ export interface CricketExtras {
 export interface BallCommentary {
   ballNumber: string;
   runs: number;
+  label: string;
+  batsmanName: string;
+  bowlerName: string;
+  bowlerId?: string; // 🛡️ পরপর দুই ওভার বোলিং ট্র্যাকিং ফিল্ড
   isWicket: boolean;
   wicketType?: string;
   isExtra: boolean;
   extraType?: string;
-  batsmanName: string;
-  bowlerName: string;
-  text: string;
+  text?: string;
   timestamp: number;
-  label: string;
 }
 
 export interface CricketInnings {

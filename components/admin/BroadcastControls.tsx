@@ -17,6 +17,7 @@ import {
   Trash2,
   FileBarChart,
   Trophy,
+  Sparkles,
 } from "lucide-react";
 import type { BroadcastGraphicType } from "@/lib/types/match";
 import { useToast } from "@/lib/context/ToastContext";
@@ -30,6 +31,7 @@ interface Props {
   activeTheme?: string;
   customLogoUrl?: string | null;
   customLogoLeftUrl?: string | null;
+  logoBgStyle?: "transparent" | "dark" | "white";
 }
 
 const CRICKET_THEMES = [
@@ -49,6 +51,47 @@ const FOOTBALL_THEMES = [
   { id: "classic", label: "Classic Center" },
 ];
 
+// 🛡️ ক্লায়েন্ট-সাইড ইমেজ অপ্টিমাইজার (স্বচ্ছতা বজায় রেখে সাইজ কমায়)
+function compressAndPrepareImage(file: File, maxWidth = 500, maxHeight = 250): Promise<Blob> {
+  return new Promise((resolve) => {
+    if (file.type === "image/svg+xml") return resolve(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(file);
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => resolve(blob || file),
+          "image/png",
+          0.95
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function BroadcastControls({
   matchId,
   sport = "cricket",
@@ -58,6 +101,7 @@ export default function BroadcastControls({
   activeTheme,
   customLogoUrl,
   customLogoLeftUrl,
+  logoBgStyle = "transparent",
 }: Props) {
   const { showToast } = useToast();
   const [uploadingSide, setUploadingSide] = useState<"left" | "right" | null>(null);
@@ -104,6 +148,14 @@ export default function BroadcastControls({
     });
   };
 
+  const changeLogoBgStyle = (style: "transparent" | "dark" | "white") => {
+    update(dbRef(rtdb), {
+      [`matches/${matchId}/meta/logoBgStyle`]: style,
+      [`matches/${matchId}/meta/updatedAt`]: Date.now(),
+    });
+    showToast(`Logo style updated!`, "info");
+  };
+
   const toggleVisibility = (field: "showScoreboard" | "showLogo", current: boolean) => {
     update(dbRef(rtdb), {
       [`matches/${matchId}/meta/${field}`]: !current,
@@ -111,24 +163,27 @@ export default function BroadcastControls({
     });
   };
 
-  // 🚀 Cloudinary Direct Upload Engine
+  // 🚀 অপ্টিমাইজড ক্লাউডিনারি আপলোড
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, side: "left" | "right") => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
 
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
     if (!cloudName || !uploadPreset) {
-      showToast("Cloudinary environment variables are missing.", "error");
+      showToast("Cloudinary environment variables missing.", "error");
       return;
     }
 
     try {
       setUploadingSide(side);
 
+      // ক্লায়েন্টে অপটিমাইজ
+      const optimizedBlob = await compressAndPrepareImage(rawFile);
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", optimizedBlob, "logo.png");
       formData.append("upload_preset", uploadPreset);
 
       const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
@@ -137,7 +192,7 @@ export default function BroadcastControls({
       });
 
       if (!res.ok) {
-        throw new Error("Failed to upload image to Cloudinary");
+        throw new Error("Cloudinary upload failed");
       }
 
       const data = await res.json();
@@ -150,10 +205,10 @@ export default function BroadcastControls({
         [`matches/${matchId}/meta/updatedAt`]: Date.now(),
       });
 
-      showToast(`${side === "left" ? "Tournament" : "Channel"} logo uploaded!`, "success");
+      showToast(`${side === "left" ? "Tournament" : "Channel"} logo updated!`, "success");
     } catch (error) {
       console.error("Cloudinary logo upload error:", error);
-      showToast("Logo upload failed. Try again.", "error");
+      showToast("লোগো আপলোড ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।", "error");
     } finally {
       setUploadingSide(null);
       e.target.value = "";
@@ -301,6 +356,7 @@ export default function BroadcastControls({
         </div>
       </div>
 
+      {/* 🔹 LOGO MANAGER SECTION */}
       <div className="space-y-3 border-t border-border pt-3">
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <button
@@ -326,14 +382,59 @@ export default function BroadcastControls({
           </button>
         </div>
 
+        {/* 🎨 লোগো ব্যাকগ্রাউন্ড স্টাইল সুইচ */}
+        <div className="rounded-xl border border-border bg-ink/40 p-3">
+          <div className="mb-2 flex items-center justify-between text-xs">
+            <span className="font-bold uppercase tracking-wider text-fg-muted">Overlay Logo Style</span>
+            <span className="text-[10px] text-fg-faint">স্ক্রিনের লোগো কেমন দেখাবে</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => changeLogoBgStyle("transparent")}
+              className={`min-h-[38px] rounded-lg border text-xs font-bold transition-all ${
+                logoBgStyle === "transparent"
+                  ? "border-electric bg-electric/20 text-electric shadow-sm"
+                  : "border-border bg-panel text-fg-muted hover:text-fg"
+              }`}
+            >
+              ✨ Floating (স্বচ্ছ)
+            </button>
+            <button
+              type="button"
+              onClick={() => changeLogoBgStyle("white")}
+              className={`min-h-[38px] rounded-lg border text-xs font-bold transition-all ${
+                logoBgStyle === "white"
+                  ? "border-amber-400 bg-amber-400/20 text-amber-500 shadow-sm"
+                  : "border-border bg-panel text-fg-muted hover:text-fg"
+              }`}
+            >
+              ☀️ White Plate
+            </button>
+            <button
+              type="button"
+              onClick={() => changeLogoBgStyle("dark")}
+              className={`min-h-[38px] rounded-lg border text-xs font-bold transition-all ${
+                logoBgStyle === "dark"
+                  ? "border-electric bg-electric/20 text-electric shadow-sm"
+                  : "border-border bg-panel text-fg-muted hover:text-fg"
+              }`}
+            >
+              🌙 Dark Glass
+            </button>
+          </div>
+        </div>
+
         <div className={`grid grid-cols-1 gap-3 ${isCricket ? "sm:grid-cols-2" : ""}`}>
           {isCricket && (
             <div className="flex items-center justify-between rounded-xl border border-border bg-ink/60 p-3">
               <div className="flex items-center gap-3">
                 {customLogoLeftUrl ? (
-                  <img src={customLogoLeftUrl} alt="Left Bug" className="h-9 w-9 rounded-lg border border-border bg-slate-900 object-contain p-1" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-slate-900 p-1">
+                    <img src={customLogoLeftUrl} alt="Left Bug" className="max-h-full max-w-full object-contain" />
+                  </div>
                 ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-panel text-[10px] font-black text-electric">LEFT</div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-panel text-[10px] font-black text-electric">LEFT</div>
                 )}
                 <div>
                   <div className="text-xs font-bold text-fg">Top-Left Logo</div>
@@ -359,9 +460,11 @@ export default function BroadcastControls({
           <div className="flex items-center justify-between rounded-xl border border-border bg-ink/60 p-3">
             <div className="flex items-center gap-3">
               {customLogoUrl ? (
-                <img src={customLogoUrl} alt="Channel Logo" className="h-9 w-9 rounded-lg border border-border bg-slate-900 object-contain p-1" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-slate-900 p-1">
+                  <img src={customLogoUrl} alt="Channel Logo" className="max-h-full max-w-full object-contain" />
+                </div>
               ) : (
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-panel text-[10px] font-black text-amber-400">NS</div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-panel text-[10px] font-black text-amber-400">NS</div>
               )}
               <div>
                 <div className="text-xs font-bold text-fg">Top-Right Watermark</div>

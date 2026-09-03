@@ -1,11 +1,11 @@
 // components/admin/NewBowlerModal.tsx
 "use client";
 
-import { useState } from "react";
-import { UserPlus, RotateCcw } from "lucide-react";
-import { useToast } from "@/lib/context/ToastContext";
+import { useState, useEffect } from "react";
+import { UserCheck, ShieldAlert, RotateCcw } from "lucide-react";
 import ResponsiveModal from "@/components/common/ResponsiveModal";
 import type { Player } from "@/lib/types/match";
+import { useToast } from "@/lib/context/ToastContext";
 
 interface NewBowlerModalProps {
   isOpen: boolean;
@@ -14,6 +14,7 @@ interface NewBowlerModalProps {
   onUndo?: () => void;
   bowlingSquad: Player[];
   activeBowlerId?: string;
+  restrictedBowlerId?: string;
   isMandatory?: boolean;
 }
 
@@ -24,96 +25,127 @@ export default function NewBowlerModal({
   onUndo,
   bowlingSquad = [],
   activeBowlerId,
+  restrictedBowlerId,
+  isMandatory = false,
 }: NewBowlerModalProps) {
   const { showToast } = useToast();
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedBowlerId, setSelectedBowlerId] = useState<string>("");
+
+  // 🛡️ যে বোলার মাত্র ওভার শেষ করেছেন
+  const blockedBowlerId = restrictedBowlerId || activeBowlerId;
+
+  useEffect(() => {
+    if (isOpen) {
+      // নিষিদ্ধ বোলার ছাড়া প্রথম ভ্যালিড বোলারকে ফোকাস করা
+      const firstValidBowler = bowlingSquad.find((p) => p.id !== blockedBowlerId);
+      setSelectedBowlerId(firstValidBowler?.id || "");
+    }
+  }, [isOpen, blockedBowlerId, bowlingSquad]);
 
   const handleSubmit = () => {
-    if (!selectedId) {
-      showToast("দয়া করে একজন বোলার নির্বাচন করুন।", "error");
-      return;
+    if (!selectedBowlerId) {
+      return showToast("বোলার নির্বাচন করুন।", "error");
     }
-    onConfirm(selectedId);
-    setSelectedId("");
-    onClose(); // 👈 এটি নিশ্চিতভাবে মডাল বন্ধ করবে
-  };
 
-  const handleModalUndo = () => {
-    if (onUndo) {
-      onUndo();
-      onClose();
-      showToast("আগের বল আনডু করা হয়েছে।", "info");
+    if (selectedBowlerId === blockedBowlerId) {
+      return showToast("একই বোলার পরপর দুই ওভার বল করতে পারবেন না।", "error");
     }
+
+    onConfirm(selectedBowlerId);
   };
 
   return (
     <ResponsiveModal
       isOpen={isOpen}
-      onClose={onClose}
-      title="Select Next Bowler"
-      icon={<UserPlus size={20} />}
+      onClose={isMandatory ? () => {} : onClose}
+      title="Select Bowler for Next Over"
+      icon={<UserCheck size={20} />}
       accent="electric"
       footer={
-        <div className="flex w-full items-center gap-2.5">
+        <div className="flex items-center justify-between gap-2 w-full">
           {onUndo && (
             <button
               type="button"
-              onClick={handleModalUndo}
-              className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-crimson/40 bg-crimson/15 px-3.5 py-2.5 text-xs font-bold text-crimson transition-all hover:bg-crimson/25 active:scale-95"
-              title="আগের বলটিতে কোনো ভুল থাকলে আনডু করুন"
+              onClick={() => {
+                onUndo();
+                onClose();
+              }}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-border bg-panel px-3.5 py-2.5 text-xs font-bold text-fg-muted hover:border-amber-400/50 hover:text-amber-400"
             >
-              <RotateCcw size={13} />
-              <span>Undo Ball</span>
+              <RotateCcw size={14} /> Undo Last Ball
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
-          >
-            Close
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!selectedId}
-            className="min-h-[44px] flex-1 rounded-xl bg-electric px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-electric/20 transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            Confirm Bowler
-          </button>
+          <div className="flex items-center gap-2 ml-auto">
+            {!isMandatory && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-[44px] rounded-xl px-4 py-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-panel"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!selectedBowlerId || selectedBowlerId === blockedBowlerId}
+              className="min-h-[44px] rounded-xl bg-electric px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-electric/25 transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              Confirm Bowler
+            </button>
+          </div>
         </div>
       }
     >
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-fg-muted">
-            Choose bowler for next over
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <label className="block text-xs font-bold uppercase tracking-wider text-fg-muted">
+            Choose Bowler from Squad
           </label>
-          <span className="rounded bg-electric/15 px-2 py-0.5 text-[10px] font-bold text-electric">
-            Over Finished
+          <span className="text-[11px] text-fg-faint">
+            *পরপর দুই ওভার বোলিং করা নিষেধ
           </span>
         </div>
 
-        <div className="grid max-h-[260px] grid-cols-2 gap-2.5 overflow-y-auto pr-1">
-          {bowlingSquad
-            .filter((p) => p.id !== activeBowlerId)
-            .map((p) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+          {bowlingSquad.map((player) => {
+            const isBlocked = player.id === blockedBowlerId;
+            const isSelected = selectedBowlerId === player.id;
+
+            return (
               <button
-                key={p.id}
+                key={player.id}
                 type="button"
-                onClick={() => setSelectedId(p.id)}
-                className={`min-h-[46px] rounded-xl border-2 px-3 py-2 text-left text-xs font-bold transition-all ${
-                  selectedId === p.id
-                    ? "border-electric bg-electric/20 text-electric shadow-sm"
-                    : "border-border bg-ink text-fg-muted hover:border-fg-faint hover:text-fg"
+                disabled={isBlocked}
+                onClick={() => setSelectedBowlerId(player.id)}
+                className={`flex min-h-[48px] items-center justify-between rounded-xl border-2 p-3 text-left text-xs transition-all ${
+                  isBlocked
+                    ? "cursor-not-allowed border-border/50 bg-ink/40 opacity-50"
+                    : isSelected
+                    ? "border-electric bg-electric/20 text-electric font-bold shadow-sm"
+                    : "border-border bg-ink text-fg hover:border-fg-faint"
                 }`}
               >
-                <span className="block truncate">{p.name}</span>
-                <span className="text-[9px] font-normal uppercase text-fg-faint">{p.role}</span>
+                <div className="min-w-0 flex-1 pr-2">
+                  <div className="truncate font-bold">
+                    {player.name} {player.isCaptain ? "(C)" : ""}
+                  </div>
+                  <div className="text-[10px] text-fg-muted font-normal uppercase">
+                    {player.role || "Bowler"}
+                  </div>
+                </div>
+
+                {isBlocked ? (
+                  <span className="flex items-center gap-1 rounded-md border border-crimson/30 bg-crimson/15 px-1.5 py-0.5 text-[9px] font-bold text-crimson">
+                    <ShieldAlert size={11} /> শেষ ওভার
+                  </span>
+                ) : isSelected ? (
+                  <span className="h-2 w-2 rounded-full bg-electric animate-ping" />
+                ) : null}
               </button>
-            ))}
+            );
+          })}
         </div>
       </div>
     </ResponsiveModal>
