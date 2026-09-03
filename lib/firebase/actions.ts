@@ -9,6 +9,22 @@ interface SnapshotState {
   football?: Partial<FootballState>;
 }
 
+// 🛡️ Firebase RTDB ক্র্যাশ প্রতিরোধক: অবজেক্ট থেকে সব undefined ফিল্টার করা
+function sanitizePayload(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizePayload);
+  } else if (obj !== null && typeof obj === "object") {
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        cleaned[key] = sanitizePayload(val);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 export async function commitActionAtomic(
   matchId: string,
   updates: Record<string, any>,
@@ -34,7 +50,6 @@ export async function commitActionAtomic(
       ? [...history] 
       : Object.values(history);
 
-    // মেমোরি-লাইট স্ন্যাপশট: squads বাদে শুধুমাত্র ডায়নামিক স্কোর ডাটা সংরক্ষণ
     if (stateToSave) {
       const snapshot: SnapshotState = {
         timestamp: Date.now(),
@@ -62,20 +77,19 @@ export async function commitActionAtomic(
 
       historyList.push(snapshot);
 
-      // মেমোরি সেফগার্ডিং: সর্বোচ্চ ১৫টি রোলব্যাক স্টেপ
       if (historyList.length > 15) {
         historyList.shift();
       }
     }
 
-    // সিঙ্গেল অ্যাটমিক মাল্টি-পাথ রাইট
     const atomicPayload: Record<string, any> = {
       ...updates,
       [`matches/${matchId}/meta/updatedAt`]: Date.now(),
       [`match_actionLogs/${matchId}`]: historyList,
     };
 
-    await update(ref(rtdb), atomicPayload);
+    // সম্পূর্ণ স্যানিটাইজড পেলোড ফায়ারবেসে রাইট
+    await update(ref(rtdb), sanitizePayload(atomicPayload));
     return { success: true };
   } catch (error) {
     console.error(`commitActionAtomic Error for match ${matchId}:`, error);
@@ -104,7 +118,6 @@ export async function undoLastAction(matchId: string) {
       return { success: false, message: "Corrupted undo state removed." };
     }
 
-    // Presence ও Metadata সুরক্ষিত রেখে স্পেসিফিক নোড রিস্টোর
     const rollbackPayload: Record<string, any> = {
       [`match_actionLogs/${matchId}`]: historyList.length > 0 ? historyList : null,
       [`matches/${matchId}/meta/updatedAt`]: Date.now(),
@@ -126,7 +139,7 @@ export async function undoLastAction(matchId: string) {
       rollbackPayload[`matches/${matchId}/football/events`] = lastEntry.football.events;
     }
 
-    await update(ref(rtdb), rollbackPayload);
+    await update(ref(rtdb), sanitizePayload(rollbackPayload));
     return { success: true };
   } catch (error) {
     console.error(`Failed to execute undoLastAction for match ${matchId}:`, error);

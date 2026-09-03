@@ -276,16 +276,24 @@ export default function PreMatchWizard() {
       isWicketKeeper: isCricket && i === 2,
     }));
 
+    // 🛡️ অটো-ফিল করলে ওপেনার স্টেট স্বয়ংক্রিয়ভাবে ক্লিন হবে
     if (team === "A") {
-      setSetupData((prev) => ({ ...prev, squadA: genericSquad }));
+      setSetupData((prev) => ({ 
+        ...prev, 
+        squadA: genericSquad,
+        openers: { striker: "", nonStriker: "", bowler: "" }
+      }));
       showToast(`${shortCode} স্কোয়াড ১১ জনে পূর্ণ করা হয়েছে!`, "info");
     } else {
-      setSetupData((prev) => ({ ...prev, squadB: genericSquad }));
+      setSetupData((prev) => ({ 
+        ...prev, 
+        squadB: genericSquad,
+        openers: { striker: "", nonStriker: "", bowler: "" }
+      }));
       showToast(`${shortCode} স্কোয়াড ১১ জনে পূর্ণ করা হয়েছে!`, "info");
     }
   };
 
-  // 🛡️ প্লেয়ার রিমুভ ও ওপেনার স্টেট ক্লিনআপ
   const removePlayer = (team: "A" | "B", id: string) => {
     setSetupData((prev) => {
       const nextOpeners = { ...prev.openers };
@@ -309,7 +317,7 @@ export default function PreMatchWizard() {
     : "teamA";
   const bowlingTeamKey = battingTeamKey === "teamA" ? "teamB" : "teamA";
   const battingSquad = battingTeamKey === "teamA" ? setupData.squadA : setupData.squadB;
-  const bowlingSquad = bowlingTeamKey === "teamA" ? setupData.squadB : setupData.squadA;
+  const bowlingSquad = bowlingTeamKey === "teamA" ? setupData.squadA : setupData.squadB;
 
   const handleStartMatch = async () => {
     if (!currentUser) return showToast("ম্যাচ তৈরি করতে লগইন করা আবশ্যক।", "error");
@@ -345,6 +353,10 @@ export default function PreMatchWizard() {
           currentEvent: null,
           createdAt: Date.now(),
           updatedAt: Date.now(),
+        },
+        // 🛡️ প্রেজেন্স নোড ইনিশিয়ালাইজেশন
+        presence: {
+          lastPing: Date.now(),
         },
       };
 
@@ -792,6 +804,7 @@ export default function PreMatchWizard() {
                   )}
                 </div>
 
+                {/* 🛡️ টস উইনার বদলালে ওপেনার রিসেট */}
                 <div className="space-y-3">
                   <label className="block text-xs font-bold uppercase tracking-wider text-fg-muted">
                     Who won the toss? *
@@ -799,7 +812,11 @@ export default function PreMatchWizard() {
                   <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setSetupData((prev) => ({ ...prev, toss: { ...prev.toss, winner: "teamA" } }))}
+                      onClick={() => setSetupData((prev) => ({ 
+                        ...prev, 
+                        toss: { ...prev.toss, winner: "teamA" },
+                        openers: { striker: "", nonStriker: "", bowler: "" }
+                      }))}
                       className={`min-h-[48px] flex-1 rounded-xl border-2 font-bold text-sm transition-all ${
                         setupData.toss.winner === "teamA" ? "border-electric bg-electric/20 text-electric" : "border-border bg-ink text-fg-faint"
                       }`}
@@ -808,7 +825,11 @@ export default function PreMatchWizard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSetupData((prev) => ({ ...prev, toss: { ...prev.toss, winner: "teamB" } }))}
+                      onClick={() => setSetupData((prev) => ({ 
+                        ...prev, 
+                        toss: { ...prev.toss, winner: "teamB" },
+                        openers: { striker: "", nonStriker: "", bowler: "" }
+                      }))}
                       className={`min-h-[48px] flex-1 rounded-xl border-2 font-bold text-sm transition-all ${
                         setupData.toss.winner === "teamB" ? "border-signal-gold bg-signal-gold/20 text-signal-gold" : "border-border bg-ink text-fg-faint"
                       }`}
@@ -818,6 +839,7 @@ export default function PreMatchWizard() {
                   </div>
                 </div>
 
+                {/* 🛡️ টস ডিসিশন বদলালেও ওপেনার রিসেট */}
                 {setupData.toss.winner && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
                     <label className="block text-xs font-bold uppercase tracking-wider text-fg-muted">
@@ -826,7 +848,11 @@ export default function PreMatchWizard() {
                     <div className="flex gap-3">
                       <button
                         type="button"
-                        onClick={() => setSetupData((prev) => ({ ...prev, toss: { ...prev.toss, decision: "bat" } }))}
+                        onClick={() => setSetupData((prev) => ({ 
+                          ...prev, 
+                          toss: { ...prev.toss, decision: "bat" },
+                          openers: { striker: "", nonStriker: "", bowler: "" }
+                        }))}
                         className={`min-h-[48px] flex-1 rounded-xl border-2 font-bold text-sm transition-all ${
                           setupData.toss.decision === "bat" ? "border-signal-gold bg-signal-gold/20 text-signal-gold" : "border-border bg-ink text-fg-faint"
                         }`}
@@ -835,7 +861,11 @@ export default function PreMatchWizard() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSetupData((prev) => ({ ...prev, toss: { ...prev.toss, decision: "bowl" } }))}
+                        onClick={() => setSetupData((prev) => ({ 
+                          ...prev, 
+                          toss: { ...prev.toss, decision: "bowl" },
+                          openers: { striker: "", nonStriker: "", bowler: "" }
+                        }))}
                         className={`min-h-[48px] flex-1 rounded-xl border-2 font-bold text-sm transition-all ${
                           setupData.toss.decision === "bowl" ? "border-electric bg-electric/20 text-electric" : "border-border bg-ink text-fg-faint"
                         }`}
@@ -865,7 +895,17 @@ export default function PreMatchWizard() {
                         <label className="mb-1 block text-xs text-fg-faint">Striker *</label>
                         <select
                           value={setupData.openers.striker}
-                          onChange={(e) => setSetupData((prev) => ({ ...prev, openers: { ...prev.openers, striker: e.target.value } }))}
+                          onChange={(e) => {
+                            const newStriker = e.target.value;
+                            setSetupData((prev) => ({
+                              ...prev,
+                              openers: {
+                                ...prev.openers,
+                                striker: newStriker,
+                                nonStriker: prev.openers.nonStriker === newStriker ? "" : prev.openers.nonStriker,
+                              },
+                            }));
+                          }}
                           className="min-h-[44px] w-full rounded-lg border border-border bg-panel p-2.5 text-xs text-fg outline-none"
                         >
                           <option value="">Select Striker...</option>

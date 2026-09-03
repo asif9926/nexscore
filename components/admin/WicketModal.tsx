@@ -35,7 +35,7 @@ export default function WicketModal({
   const [runsCompleted, setRunsCompleted] = useState<number>(0);
   const [isWideDelivery, setIsWideDelivery] = useState<boolean>(false);
 
-  // 🛡️ মডাল ওপেন হলে বর্তমান স্ট্রাইকারকে অটো-সিলেক্ট এবং ফর্ম স্টেট ফ্রেশ করা
+  // 🛡️ ফিক্সড: শুধুমাত্র মডাল ওপেন হওয়ার মুহূর্তে একবার স্টেট ফ্রেশ হবে (রি-রেন্ডারে ড্রপডাউন মুছবে না)
   useEffect(() => {
     if (isOpen) {
       const currentStriker = activeBatsmen.find((b) => b.onStrike);
@@ -45,9 +45,8 @@ export default function WicketModal({
       setRunsCompleted(0);
       setIsWideDelivery(false);
     }
-  }, [isOpen, activeBatsmen]);
+  }, [isOpen]);
 
-  // ডিসমিসাল টাইপ রান-আউট বা স্টাম্পড না হলে ওয়াইড বা রান রিসেট
   const handleDismissalChange = (type: string) => {
     setDismissalType(type);
     if (type !== "Run Out") {
@@ -67,6 +66,7 @@ export default function WicketModal({
     if (availableBatsmen.length > 0 && !newBatsmanId) {
       return showToast("পরবর্তী ব্যাটার নির্বাচন করুন।", "error");
     }
+
     onConfirm({
       outBatsmanId,
       newBatsmanId,
