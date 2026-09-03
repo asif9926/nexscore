@@ -1,3 +1,4 @@
+// components/common/Footer.tsx
 "use client";
 
 import Link from "next/link";
@@ -33,8 +34,8 @@ export default function Footer() {
           {/* Right: Admin & Developer Info */}
           <div className="flex flex-col items-center gap-4 md:items-end">
             
-            {/* 1. Admin Portal Link (সরাসরি /admin পাথে যাবে) */}
-            <Link
+            {/* 🛡️ ফিক্সড: <a> ট্যাগ ব্যবহারের ফলে কোনো প্রিফেচ হ্যাং বা রাউটার লক হবে না */}
+            <a
               href="/admin"
               className="group flex items-center gap-2 text-sm font-semibold text-fg/80 transition-colors hover:text-fg"
             >
@@ -42,9 +43,9 @@ export default function Footer() {
               <span className="underline decoration-fg-faint underline-offset-4 group-hover:decoration-electric">
                 Admin Control Portal
               </span>
-            </Link>
+            </a>
 
-            {/* 2. Developer Card */}
+            {/* Developer Card */}
             <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-border/50 bg-panel/40 p-4 shadow-sm backdrop-blur-md md:items-end">
               <Link
                 href="/about-developer"
@@ -59,14 +60,14 @@ export default function Footer() {
               </Link>
               
               <a
-  href={siteConfig.developer.whatsappUrl}
-  target="_blank"
-  rel="noopener noreferrer"
-  className="group flex items-center gap-2 rounded-full border border-[#25D366]/20 bg-[#25D366]/10 px-4 py-1.5 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"
->
-  <MessageCircle size={14} className="group-hover:animate-pulse" />
-  <span>Developer Support</span>
-</a>
+                href={siteConfig.developer.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-2 rounded-full border border-[#25D366]/20 bg-[#25D366]/10 px-4 py-1.5 text-xs font-bold text-[#25D366] shadow-sm transition-all hover:bg-[#25D366]/20 hover:text-white"
+              >
+                <MessageCircle size={14} className="group-hover:animate-pulse" />
+                <span>Developer Support</span>
+              </a>
             </div>
 
           </div>

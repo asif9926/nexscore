@@ -61,7 +61,6 @@ export default function AdminDashboardHome() {
           if (matchDataSnap.exists() && matchDataSnap.val()?.meta?.status === "live") {
             setActiveMatch({ id: matchId, data: matchDataSnap.val() });
           } else {
-            // ম্যাচটি শেষ হয়ে গেলে বা ডিলিট হলে পয়েন্টার মুছে ফেলা
             await set(activeMatchRef, null);
             setActiveMatch(null);
           }
@@ -137,11 +136,14 @@ export default function AdminDashboardHome() {
           </p>
         </div>
 
-        <Link href="/">
-          <button className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-panel px-5 py-2.5 text-xs font-bold text-fg shadow-md hover:bg-panel-raised sm:w-auto">
+        <a href="/">
+          <button
+            type="button"
+            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-panel px-5 py-2.5 text-xs font-bold text-fg shadow-md hover:bg-panel-raised sm:w-auto"
+          >
             <Home size={16} className="text-electric" /> View Public Home
           </button>
-        </Link>
+        </a>
       </div>
 
       {/* Main Action Cards */}
