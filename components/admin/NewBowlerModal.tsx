@@ -31,16 +31,15 @@ export default function NewBowlerModal({
   const { showToast } = useToast();
   const [selectedBowlerId, setSelectedBowlerId] = useState<string>("");
 
-  // 🛡️ যে বোলার মাত্র ওভার শেষ করেছেন
   const blockedBowlerId = restrictedBowlerId || activeBowlerId;
 
+  // 🛡️ মডাল শুধুমাত্র যখন নতুন করে ওপেন হবে তখনই সিলেকশন সেট হবে, লাইভ রি-রেন্ডারে রিসেট হবে না
   useEffect(() => {
     if (isOpen) {
-      // নিষিদ্ধ বোলার ছাড়া প্রথম ভ্যালিড বোলারকে ফোকাস করা
       const firstValidBowler = bowlingSquad.find((p) => p.id !== blockedBowlerId);
       setSelectedBowlerId(firstValidBowler?.id || "");
     }
-  }, [isOpen, blockedBowlerId, bowlingSquad]);
+  }, [isOpen]);
 
   const handleSubmit = () => {
     if (!selectedBowlerId) {

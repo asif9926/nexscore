@@ -3,13 +3,12 @@
 
 import { useParams } from "next/navigation";
 import { MatchDataProvider, useMatchContext } from "@/lib/context/MatchDataContext";
-import OverlayThemeGuard from "@/components/overlay/OverlayThemeGuard";
 import FootballBroadcastEngine from "@/components/overlay/football/BroadcastEngine";
 import EventPopup from "@/components/overlay/cricket/EventPopup";
 import BroadcastLogoBadge from "@/components/overlay/BroadcastLogoBadge";
 
 function FootballOverlayInner() {
-  const { matchData, loading, matchId } = useMatchContext();
+  const { matchData, loading } = useMatchContext();
 
   if (loading || !matchData?.meta) {
     return null;
@@ -25,16 +24,16 @@ function FootballOverlayInner() {
     <main className="relative h-screen w-full overflow-hidden bg-transparent select-none">
       {shouldRenderEngine && (
         <div className="relative z-10 h-full w-full">
-          <FootballBroadcastEngine matchId={matchId} theme={activeTheme} />
+          <FootballBroadcastEngine theme={activeTheme} />
         </div>
       )}
 
       <div className="pointer-events-none relative z-30">
-        <BroadcastLogoBadge matchId={matchId} />
+        <BroadcastLogoBadge />
       </div>
 
       <div className="pointer-events-none relative z-50">
-        <EventPopup matchId={matchId} />
+        <EventPopup />
       </div>
     </main>
   );
@@ -44,11 +43,10 @@ export default function FootballOverlayPage() {
   const params = useParams();
   const matchId = (params?.matchId as string) || "";
 
+  // 🛡️ Fix #19: Single ThemeGuard enforcement
   return (
-    <OverlayThemeGuard>
-      <MatchDataProvider matchId={matchId}>
-        <FootballOverlayInner />
-      </MatchDataProvider>
-    </OverlayThemeGuard>
+    <MatchDataProvider matchId={matchId}>
+      <FootballOverlayInner />
+    </MatchDataProvider>
   );
 }

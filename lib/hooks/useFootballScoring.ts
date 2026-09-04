@@ -5,21 +5,20 @@ import { useState } from "react";
 import { commitActionAtomic } from "@/lib/firebase/actions";
 import { useToast } from "@/lib/context/ToastContext";
 import { useFootballClock } from "./useFootballClock";
-import type { MatchData, FootballEvent } from "@/lib/types/match";
+import type { MatchData, FootballEvent, FootballCard } from "@/lib/types/match";
+import { safeArray } from "@/lib/utils";
+import { rtdb } from "@/lib/firebase/client";
+import { ref, get, update } from "firebase/database";
 
 export function useFootballScoring(matchData: MatchData | null) {
   const { showToast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const matchId =
-    (matchData as any)?.id ||
-    (matchData?.meta as any)?.id ||
-    (typeof window !== "undefined" ? window.location.pathname.split("/").filter(Boolean).pop() : "");
-
+  const matchId = matchData?.id || (matchData?.meta as any)?.id || "";
   const football = matchData?.football;
   const footballClock = useFootballClock(football);
 
-  // ১. টাইমার টগল (স্টার্ট / পজ)
+  // ১. টাইমার টগল
   const handleToggleTimer = async () => {
     if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);
@@ -90,10 +89,6 @@ export function useFootballScoring(matchData: MatchData | null) {
         [`matches/${matchId}/football/elapsedSeconds`]: newElapsed,
       };
 
-      if (isFullTime) {
-        updates[`matches/${matchId}/meta/activeGraphic`] = "RESULT_POSTER";
-      }
-
       await commitActionAtomic(matchId, updates, `Change Half to ${halfLabel}`, matchData);
       showToast(`হাফ পরিবর্তিত: ${halfLabel}`, "info");
     } catch (error) {
@@ -143,19 +138,41 @@ export function useFootballScoring(matchData: MatchData | null) {
         team: team === "A" ? "teamA" : "teamB",
         minute: goalMinute,
         timestamp: now,
+        scorerId: details.scorerId,
+        scorerName: details.scorerName,
       };
 
-      const updatedEvents = [...(football.events || []), newEvent];
+      if (details.assistId) newEvent.assistId = details.assistId;
+      if (details.assistName) newEvent.assistName = details.assistName;
 
+      const updatedEvents = [...safeArray<FootballEvent>(football.events), newEvent];
+
+      // 🛡️ নির্দিষ্ট eventTimestamp ও eventDetail সেভ করা
       const updates = {
         [`matches/${matchId}/football/score${team}`]: team === "A" ? newScoreA : newScoreB,
         [`matches/${matchId}/football/${currentHalfKey}`]: updatedHalf,
         [`matches/${matchId}/football/events`]: updatedEvents,
         [`matches/${matchId}/meta/currentEvent`]: "GOAL",
+        [`matches/${matchId}/meta/eventTimestamp`]: now,
+        [`matches/${matchId}/meta/eventDetail`]: details.scorerName || null,
       };
 
       await commitActionAtomic(matchId, updates, `Goal for Team ${team} by ${details.scorerName}`, matchData);
       showToast(`⚽ GOAL! ${details.scorerName} (${goalMinute}')`, "success");
+
+      // 🛡️ ৪.৫ সেকেন্ড পর ডেটাবেস থেকে ইভেন্ট অটো-রিসেট (ঘোস্ট পপআপ চিরতরে বন্ধ)
+      setTimeout(async () => {
+        try {
+          const snap = await get(ref(rtdb, `matches/${matchId}/meta/eventTimestamp`));
+          if (snap.val() === now) {
+            await update(ref(rtdb), {
+              [`matches/${matchId}/meta/currentEvent`]: null,
+              [`matches/${matchId}/meta/eventTimestamp`]: null,
+              [`matches/${matchId}/meta/eventDetail`]: null,
+            });
+          }
+        } catch {}
+      }, 4500);
     } catch (error) {
       console.error("Error recording goal:", error);
       showToast("গোল যোগ করতে ব্যর্থ হয়েছে।", "error");
@@ -181,6 +198,7 @@ export function useFootballScoring(matchData: MatchData | null) {
       const now = Date.now();
       const cardMinute = details.minute || footballClock.minute;
       const isRed = details.cardType === "red";
+      const cardEventName = isRed ? "RED CARD" : "YELLOW CARD";
 
       const currentRed = team === "A" ? football.redCardsA || 0 : football.redCardsB || 0;
       const currentYellow = team === "A" ? football.yellowCardsA || 0 : football.yellowCardsB || 0;
@@ -191,18 +209,49 @@ export function useFootballScoring(matchData: MatchData | null) {
         team: team === "A" ? "teamA" : "teamB",
         minute: cardMinute,
         timestamp: now,
+        playerId: details.playerId,
+        playerName: details.playerName,
+        cardType: details.cardType,
       };
 
-      const updatedEvents = [...(football.events || []), newEvent];
+      const updatedEvents = [...safeArray<FootballEvent>(football.events), newEvent];
 
+      const teamKey = team === "A" ? "teamA" : "teamB";
+      const currentTeamCards = safeArray<FootballCard>(football.cards?.[teamKey]);
+      const newCard: FootballCard = {
+        type: details.cardType,
+        minute: cardMinute,
+        timestamp: now,
+        playerId: details.playerId,
+        playerName: details.playerName,
+      };
+
+      // 🛡️ নির্দিষ্ট কার্ড নাম ও প্লেয়ার নাম পুশ
       const updates: Record<string, any> = {
         [`matches/${matchId}/football/${isRed ? "redCards" : "yellowCards"}${team}`]: isRed ? currentRed + 1 : currentYellow + 1,
         [`matches/${matchId}/football/events`]: updatedEvents,
-        [`matches/${matchId}/meta/currentEvent`]: isRed ? "RED CARD" : "YELLOW CARD",
+        [`matches/${matchId}/football/cards/${teamKey}`]: [...currentTeamCards, newCard],
+        [`matches/${matchId}/meta/currentEvent`]: cardEventName,
+        [`matches/${matchId}/meta/eventTimestamp`]: now,
+        [`matches/${matchId}/meta/eventDetail`]: details.playerName || null,
       };
 
       await commitActionAtomic(matchId, updates, `${isRed ? "Red" : "Yellow"} Card for ${details.playerName}`, matchData);
       showToast(`${isRed ? "🟥 লাল কার্ড" : "🟨 হলুদ কার্ড"} — ${details.playerName}`, isRed ? "error" : "info");
+
+      // 🛡️ ৪.৫ সেকেন্ড পর কার্ড ইভেন্ট অটো-রিসেট
+      setTimeout(async () => {
+        try {
+          const snap = await get(ref(rtdb, `matches/${matchId}/meta/eventTimestamp`));
+          if (snap.val() === now) {
+            await update(ref(rtdb), {
+              [`matches/${matchId}/meta/currentEvent`]: null,
+              [`matches/${matchId}/meta/eventTimestamp`]: null,
+              [`matches/${matchId}/meta/eventDetail`]: null,
+            });
+          }
+        } catch {}
+      }, 4500);
     } catch (error) {
       console.error("Error recording card:", error);
       showToast("কার্ড যোগ করতে ব্যর্থ হয়েছে।", "error");
@@ -211,7 +260,7 @@ export function useFootballScoring(matchData: MatchData | null) {
     }
   };
 
-  // ৫. পজেশন অ্যাডজাস্টমেন্ট (Safe Fallback সহ)
+  // ৫. পজেশন অ্যাডজাস্টমেন্ট
   const handlePossessionAdjust = async (team: "A" | "B", delta: number) => {
     if (!matchId || !football || isProcessing) return;
     setIsProcessing(true);

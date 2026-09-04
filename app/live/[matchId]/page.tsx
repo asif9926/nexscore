@@ -1,7 +1,8 @@
 // app/live/[matchId]/page.tsx
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useMatchData } from "@/lib/hooks/useMatchData";
 import ReconnectingBanner from "@/components/public-view/ReconnectingBanner";
@@ -13,7 +14,15 @@ import Footer from "@/components/common/Footer";
 export default function SingleLiveMatchPage() {
   const params = useParams();
   const matchId = (params?.matchId as string) || "";
+  const router = useRouter();
   const { matchData, loading } = useMatchData(matchId);
+
+  // 🛡️ ম্যাচ লাইভ থেকে সমাপ্ত হয়ে আর্কাইভ হলে স্বয়ংক্রিয়ভাবে আর্কাইভ পেজে রিডাইরেক্ট
+  useEffect(() => {
+    if (!loading && matchData && matchData.meta?.status === "completed") {
+      router.push(`/match-history/${matchId}`);
+    }
+  }, [loading, matchData, matchId, router]);
 
   if (loading) {
     return (
@@ -39,19 +48,19 @@ export default function SingleLiveMatchPage() {
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-12 text-center">
           <div className="w-full max-w-md space-y-4 rounded-3xl border border-border bg-panel p-8 shadow-2xl">
             <Trophy size={32} className="mx-auto text-signal-gold" />
-            <h2 className="text-xl font-bold text-fg">Match Not Found or Ended</h2>
+            <h2 className="text-xl font-bold text-fg">Match Completed or Moved</h2>
             <p className="text-xs text-fg-muted">
-              এই ম্যাচটি বর্তমানে লাইভ নেই বা ইতোমধ্যে সমাপ্ত করে আর্কাইভ করা হয়েছে।
+              এই ম্যাচটি সমাপ্ত করে আর্কাইভে সংরক্ষণ করা হয়েছে। পূর্ণাঙ্গ স্কোরবোর্ড দেখতে আর্কাইভে প্রবেশ করুন।
             </p>
             <div className="flex flex-col gap-2 pt-2">
-              <Link href="/live">
-                <button className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-electric px-4 py-2 text-xs font-bold text-white">
-                  View All Live Matches
+              <Link href={`/match-history/${matchId}`}>
+                <button className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-electric px-4 py-2 text-xs font-bold text-white shadow-md shadow-electric/25">
+                  <History size={15} /> View Archived Scorecard
                 </button>
               </Link>
-              <Link href="/match-history">
+              <Link href="/live">
                 <button className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-ink px-4 py-2 text-xs font-semibold text-fg-muted hover:text-fg">
-                  <History size={14} /> Check Archives
+                  View Other Live Matches
                 </button>
               </Link>
             </div>
@@ -65,7 +74,6 @@ export default function SingleLiveMatchPage() {
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-fg selection:bg-electric/30">
       <Navbar />
-      {/* 🛡️ ফিক্সড: প্রপস পাস করা হয়েছে যাতে রিয়েল-টাইম প্রেজেন্স ডিটেক্ট করতে পারে */}
       <ReconnectingBanner matchId={matchId} matchData={matchData} />
 
       <div className="pointer-events-none fixed inset-0 z-0 hidden overflow-hidden sm:block">

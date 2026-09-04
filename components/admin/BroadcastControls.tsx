@@ -17,7 +17,6 @@ import {
   Trash2,
   FileBarChart,
   Trophy,
-  Sparkles,
 } from "lucide-react";
 import type { BroadcastGraphicType } from "@/lib/types/match";
 import { useToast } from "@/lib/context/ToastContext";
@@ -51,7 +50,6 @@ const FOOTBALL_THEMES = [
   { id: "classic", label: "Classic Center" },
 ];
 
-// 🛡️ ক্লায়েন্ট-সাইড ইমেজ অপ্টিমাইজার (স্বচ্ছতা বজায় রেখে সাইজ কমায়)
 function compressAndPrepareImage(file: File, maxWidth = 500, maxHeight = 250): Promise<Blob> {
   return new Promise((resolve) => {
     if (file.type === "image/svg+xml") return resolve(file);
@@ -124,9 +122,12 @@ export default function BroadcastControls({
     }
 
     const nextGraphic = activeGraphic === graphic ? "LOWER_THIRD" : graphic;
+    const expiresAt =
+      nextGraphic !== "LOWER_THIRD" && autoRevertMs > 0 ? Date.now() + autoRevertMs : null;
 
     update(dbRef(rtdb), {
       [`matches/${matchId}/meta/activeGraphic`]: nextGraphic,
+      [`matches/${matchId}/meta/activeGraphicExpiresAt`]: expiresAt,
       [`matches/${matchId}/meta/updatedAt`]: Date.now(),
     });
 
@@ -134,6 +135,7 @@ export default function BroadcastControls({
       autoRevertTimerRef.current = setTimeout(() => {
         update(dbRef(rtdb), {
           [`matches/${matchId}/meta/activeGraphic`]: "LOWER_THIRD",
+          [`matches/${matchId}/meta/activeGraphicExpiresAt`]: null,
           [`matches/${matchId}/meta/updatedAt`]: Date.now(),
         });
         autoRevertTimerRef.current = null;
@@ -163,7 +165,6 @@ export default function BroadcastControls({
     });
   };
 
-  // 🚀 অপ্টিমাইজড ক্লাউডিনারি আপলোড
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, side: "left" | "right") => {
     const rawFile = e.target.files?.[0];
     if (!rawFile) return;
@@ -178,8 +179,6 @@ export default function BroadcastControls({
 
     try {
       setUploadingSide(side);
-
-      // ক্লায়েন্টে অপটিমাইজ
       const optimizedBlob = await compressAndPrepareImage(rawFile);
 
       const formData = new FormData();
@@ -197,7 +196,6 @@ export default function BroadcastControls({
 
       const data = await res.json();
       const secureUrl = data.secure_url;
-
       const field = side === "left" ? "customLogoLeftUrl" : "customLogoUrl";
 
       await update(dbRef(rtdb), {
@@ -320,18 +318,36 @@ export default function BroadcastControls({
           </div>
         </div>
       ) : (
+        /* ⚽ FOOTBALL TV GRAPHICS CONTROLS */
         <div>
-          <button
-            onClick={() => toggleGraphic("INNINGS_BREAK")}
-            className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-bold transition-all active:scale-95 ${
-              activeGraphic === "INNINGS_BREAK"
-                ? "border-pitch-green bg-pitch-green text-ink shadow-md shadow-pitch-green/30"
-                : "border-pitch-green/30 bg-pitch-green/10 text-pitch-green hover:bg-pitch-green/20"
-            }`}
-          >
-            <Activity size={15} />
-            <span>{activeGraphic === "INNINGS_BREAK" ? "Close Summary Poster" : "Show Half-Time Poster"}</span>
-          </button>
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-fg-faint">
+            Football Full-Screen TV Posters
+          </label>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              onClick={() => toggleGraphic("INNINGS_BREAK")}
+              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-bold transition-all active:scale-95 ${
+                activeGraphic === "INNINGS_BREAK"
+                  ? "border-pitch-green bg-pitch-green text-ink shadow-md shadow-pitch-green/30"
+                  : "border-pitch-green/30 bg-pitch-green/10 text-pitch-green hover:bg-pitch-green/20"
+              }`}
+            >
+              <Activity size={15} />
+              <span>{activeGraphic === "INNINGS_BREAK" ? "Close Half-Time" : "Half-Time Poster"}</span>
+            </button>
+
+            <button
+              onClick={() => toggleGraphic("RESULT_POSTER")}
+              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-bold transition-all active:scale-95 ${
+                activeGraphic === "RESULT_POSTER"
+                  ? "border-amber-400 bg-amber-400 text-slate-950 shadow-md shadow-amber-400/30"
+                  : "border-amber-400/30 bg-amber-400/10 text-amber-400 hover:bg-amber-400/20"
+              }`}
+            >
+              <Trophy size={15} />
+              <span>{activeGraphic === "RESULT_POSTER" ? "Close Result" : "Full-Time Result Poster"}</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -356,7 +372,7 @@ export default function BroadcastControls({
         </div>
       </div>
 
-      {/* 🔹 LOGO MANAGER SECTION */}
+      {/* LOGO MANAGER SECTION */}
       <div className="space-y-3 border-t border-border pt-3">
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <button
@@ -382,7 +398,6 @@ export default function BroadcastControls({
           </button>
         </div>
 
-        {/* 🎨 লোগো ব্যাকগ্রাউন্ড স্টাইল সুইচ */}
         <div className="rounded-xl border border-border bg-ink/40 p-3">
           <div className="mb-2 flex items-center justify-between text-xs">
             <span className="font-bold uppercase tracking-wider text-fg-muted">Overlay Logo Style</span>

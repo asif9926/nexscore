@@ -3,28 +3,34 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useMatchData } from "@/lib/hooks/useMatchData";
+import { useMatchContext } from "@/lib/context/MatchDataContext";
+import type { MatchData } from "@/lib/types/match";
 
 interface Props {
-  matchId?: string;
-  matchData?: any;
+  matchData?: MatchData | null;
 }
 
-export default function BroadcastLogoBadge({ matchId, matchData: propMatchData }: Props) {
-  const { matchData: fetchedMatchData, loading } = useMatchData(propMatchData ? undefined : matchId);
-  const matchData = propMatchData || fetchedMatchData;
+export default function BroadcastLogoBadge({ matchData: propMatchData }: Props) {
+  // 🛡️ Fix #7: useMatchData-র পরিবর্তে প্যারেন্ট MatchDataContext থেকে ডাটা শেয়ার
+  let contextMatchData: MatchData | null = null;
+  try {
+    const context = useMatchContext();
+    contextMatchData = context.matchData;
+  } catch {
+    // context ছাড়া কল হলে প্রপ ফলব্যাক ব্যবহার
+  }
 
+  const matchData = propMatchData || contextMatchData;
   const [leftImageError, setLeftImageError] = useState(false);
   const [rightImageError, setRightImageError] = useState(false);
 
-  if ((!propMatchData && loading) || !matchData?.meta || matchData.meta.showLogo === false) {
+  if (!matchData?.meta || matchData.meta.showLogo === false) {
     return null;
   }
 
   const { customLogoUrl, customLogoLeftUrl, sport, tournament, logoBgStyle = "transparent" } = matchData.meta as any;
   const isCricket = sport === "cricket";
 
-  // 🛡️ সিলেক্টেড মোড অনুযায়ী কনটেইনার ব্যাকগ্রাউন্ড
   const getContainerClasses = () => {
     switch (logoBgStyle) {
       case "white":

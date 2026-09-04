@@ -10,7 +10,7 @@ export function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith("/admin");
   const isProtectedApiRoute = pathname.startsWith("/api/match/finalize");
 
-  // ১. সংরক্ষিত API রুটের জন্য অথেন্টিকেশন চেক
+  // ১. সংরক্ষিত API রুটের জন্য সেশন/হেডার ভ্যালিডেশন
   if (isProtectedApiRoute) {
     const authHeader = request.headers.get("authorization");
     if (!token && !authHeader) {
@@ -24,17 +24,16 @@ export function middleware(request: NextRequest) {
 
   // ২. অ্যাডমিন ওয়েব রুট গার্ড (/admin/*)
   if (isAdminRoute) {
-    // লগইন করা না থাকলে এবং ইউজার লগইন পেজে না থাকলে
+    // লগইন ছাড়া কোনো অ্যাডমিন রুটে প্রবেশের চেষ্টা
     if (!token && !isLoginPage) {
       const loginUrl = new URL("/admin/login", request.url);
-      // লগইনের পর যাতে সরাসরি কাঙ্ক্ষিত পেজে (যেমন: /admin/control) ফিরে যেতে পারে
       if (pathname !== "/admin") {
         loginUrl.searchParams.set("callbackUrl", `${pathname}${search}`);
       }
       return NextResponse.redirect(loginUrl);
     }
 
-    // অলরেডি লগইন থাকা অবস্থায় লগইন পেজে ঢুকলে ড্যাশবোর্ডে রিডাইরেক্ট করবে
+    // অলরেডি ভ্যালিড সেশন কুকি নিয়ে লগইন পেজে ঢুকলে ড্যাশবোর্ডে রিডাইরেক্ট
     if (token && isLoginPage) {
       const callbackUrl = request.nextUrl.searchParams.get("callbackUrl");
       const targetUrl = callbackUrl && callbackUrl.startsWith("/admin") ? callbackUrl : "/admin";
@@ -45,7 +44,6 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// যে যে রুটে মিডলওয়্যার সক্রিয় থাকবে
 export const config = {
   matcher: [
     "/admin/:path*",

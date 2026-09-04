@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Zap, FileText, Activity, Users, TrendingUp, Info, Coins, MapPin, Trophy } from "lucide-react";
 import { MatchData } from "@/lib/types/match";
 import { useFootballClock } from "@/lib/hooks/useFootballClock";
-import { oversToDecimal, getMaxWickets } from "@/lib/utils";
+import { calculateMatchResult } from "@/lib/utils";
 import LiveTab from "./tabs/LiveTab";
 import ScorecardTab from "./tabs/ScorecardTab";
 import CommentaryTab from "./tabs/CommentaryTab";
@@ -67,43 +67,6 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
 
   const inn1 = cricket?.innings1;
   const inn2 = cricket?.innings2;
-  const chasingSquadKey: "teamA" | "teamB" = 
-    (inn2?.battingTeam as "teamA" | "teamB") || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
-  const squadLength = cricket?.squads?.[chasingSquadKey]?.length || 11;
-  const maxWickets = getMaxWickets(squadLength);
-
-  // 🛡️ DLS ও রেইন-রুল সাপোর্টেড নিখুঁত রেজাল্ট গণনাকারী
-  const getCricketResult = () => {
-    const savedResult = (meta as any)?.finalResult;
-    if (savedResult && savedResult !== "Match Completed") {
-      return savedResult;
-    }
-
-    const inn1Team = inn1?.battingTeam === "teamA" ? meta?.teamA : meta?.teamB;
-    const inn2Team = inn1?.battingTeam === "teamA" ? meta?.teamB : meta?.teamA;
-    const targetScore = inn2?.target || (inn1?.score || 0) + 1;
-
-    if (!inn2 || (!inn2.overs && inn2.score === 0) || inn2.overs === "0.0") {
-      return `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} • Match Incomplete`;
-    }
-
-    if (inn2.score >= targetScore) {
-      const wkts = Math.max(0, maxWickets - (inn2.wickets || 0));
-      return `${inn2Team} won by ${wkts} wicket${wkts > 1 ? "s" : ""}`;
-    }
-
-    const oversDec = oversToDecimal(inn2.overs);
-    const maxOvers = cricket?.maxOvers || 20;
-    const isInn2Finished = inn2.isCompleted || oversDec >= maxOvers || (inn2.wickets || 0) >= maxWickets;
-
-    if (isInn2Finished) {
-      const diff = Math.max(0, targetScore - 1 - inn2.score);
-      if (diff > 0) return `${inn1Team} won by ${diff} run${diff > 1 ? "s" : ""}`;
-      if (diff === 0) return "Match Tied (Super Over)";
-    }
-
-    return `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} • Match Incomplete`;
-  };
 
   return (
     <div className="relative w-full min-w-0 space-y-6 text-fg">
@@ -198,7 +161,8 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
 
                   <div className="flex items-center justify-center gap-1.5 rounded-xl border border-signal-gold/40 bg-signal-gold/15 px-3 py-1.5 text-center text-xs font-bold text-signal-gold">
                     <Trophy size={13} className="shrink-0 text-signal-gold" />
-                    <span className="truncate">{getCricketResult()}</span>
+                    {/* 🛡️ Fix #9: সেন্ট্রাল রেজাল্ট ইঞ্জিন */}
+                    <span className="truncate">{calculateMatchResult(matchData)}</span>
                   </div>
                 </div>
               ) : (
@@ -227,10 +191,10 @@ export default function LiveMatchCenter({ matchData }: { matchData: MatchData })
         </div>
       </div>
 
+      {/* 🛡️ ফিক্সড: ফুটবলের জন্য Commentary ও Graphs ট্যাব আনব্লক করা হয়েছে */}
       <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border pb-2.5 pt-1 px-1 -mx-1 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs
           .filter((tab) => !(isCompleted && tab.id === "live"))
-          .filter((tab) => isCricket || (tab.id !== "graphs" && tab.id !== "commentary"))
           .map((tab) => (
             <button
               key={tab.id}

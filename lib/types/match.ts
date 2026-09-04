@@ -28,11 +28,14 @@ export interface MatchMeta {
   venue?: string;
   activeTheme?: string;
   activeGraphic?: BroadcastGraphicType;
+  activeGraphicExpiresAt?: number | null; // 🛡️ Fix #6, #13: Server-truth auto revert
   showScoreboard?: boolean;
   showLogo?: boolean;
   customLogoUrl?: string | null;
   customLogoLeftUrl?: string | null;
+  logoBgStyle?: "transparent" | "dark" | "white";
   currentEvent?: string | null;
+  finalResult?: string | null;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -53,7 +56,6 @@ export interface Bowler {
   id: string;
   name: string;
   overs: string;
-  legalBallsDelivered?: number; // ক্যালকুলেশনের নির্ভুলতার জন্য
   maidens: number;
   runs: number;
   wickets: number;
@@ -80,7 +82,7 @@ export interface BallCommentary {
   label: string;
   batsmanName: string;
   bowlerName: string;
-  bowlerId?: string; // 🛡️ পরপর দুই ওভার বোলিং ট্র্যাকিং ফিল্ড
+  bowlerId?: string;
   isWicket: boolean;
   wicketType?: string;
   isExtra: boolean;
@@ -94,12 +96,11 @@ export interface CricketInnings {
   score: number;
   wickets: number;
   overs: string;
-  totalBallsDelivered?: number; // ফ্র্যাকশনাল হিসাবের সুবিধার্থে
   runRate: number;
   extras: CricketExtras;
   batsmen: Batsman[];
   bowlers: Bowler[];
-  recentBalls: BallCommentary[]; // ফিক্সড: স্ট্রিং ইউনিয়ন দূর করা হয়েছে
+  recentBalls: BallCommentary[];
   fallOfWickets: FallOfWicket[];
   isCompleted: boolean;
   target?: number;
@@ -118,6 +119,8 @@ export interface FootballCard {
   type: 'yellow' | 'red';
   minute: number;
   timestamp: number;
+  playerId?: string;
+  playerName?: string;
 }
 
 export interface FootballEvent {
@@ -126,6 +129,14 @@ export interface FootballEvent {
   team: 'teamA' | 'teamB';
   minute: number;
   timestamp: number;
+  // 🛡️ Fix #8: Data loss solved
+  scorerId?: string;
+  scorerName?: string;
+  assistId?: string;
+  assistName?: string;
+  playerId?: string;
+  playerName?: string;
+  cardType?: 'yellow' | 'red';
 }
 
 export interface FootballPossession {
@@ -172,6 +183,7 @@ export interface MatchPresence {
 }
 
 export interface MatchData {
+  id?: string;
   meta: MatchMeta;
   presence: MatchPresence;
   cricket?: CricketState;

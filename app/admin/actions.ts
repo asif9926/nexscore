@@ -91,8 +91,8 @@ export async function deleteMatchAction(id: string, clientToken?: string) {
     const docData = docSnap.data();
     const matchCreator = docData?.createdBy || docData?.fullSnapshot?.meta?.createdBy;
 
-    // ওনারশিপ এনফোর্সমেন্ট
-    if (matchCreator && matchCreator !== adminUid) {
+    // 🛡️ Fix #5: ওনারশিপ গার্ড (matchCreator না থাকলেও অন্য অ্যাডমিন ডিলিট করতে পারবে না)
+    if (!matchCreator || matchCreator !== adminUid) {
       return { success: false, error: "Forbidden: You cannot delete matches created by other admins." };
     }
 

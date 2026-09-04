@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { adminFirestore, adminAuth, adminRtdb } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { getMaxWickets, oversToDecimal } from "@/lib/utils";
+import { calculateMatchResult } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -56,59 +56,24 @@ export async function POST(request: Request) {
     }
 
     const matchData = snapshot.val();
+    const matchCreator = matchData.meta?.createdBy;
 
-    if (matchData.meta?.createdBy && matchData.meta.createdBy !== adminUid) {
+    // 🛡️ Fix #5: ওনারশিপ এনফোর্সমেন্ট (matchCreator না থাকলেও অন্য অ্যাডমিন ফাইনাল করতে পারবে না)
+    if (!matchCreator || matchCreator !== adminUid) {
       return NextResponse.json({ error: "Forbidden: You cannot end another admin's match." }, { status: 403 });
     }
 
-    // 🛡️ রেইন রুল / DLS সাপোর্টেড নির্ভুল ফাইনাল রেজাল্ট
-    let calculatedResult = "Match Completed";
-    if (matchData.meta?.sport === "cricket" && matchData.cricket) {
-      const inn1 = matchData.cricket.innings1;
-      const inn2 = matchData.cricket.innings2;
-      const inn1Team = inn1?.battingTeam === "teamA" ? matchData.meta.teamA : matchData.meta.teamB;
-      const inn2Team = inn1?.battingTeam === "teamA" ? matchData.meta.teamB : matchData.meta.teamA;
-      
-      const target = inn2?.target || (inn1?.score || 0) + 1;
-      const maxOvers = matchData.cricket.maxOvers || 20;
+    // 🛡️ Fix #9: সেন্ট্রাল রেজাল্ট ইঞ্জিন ব্যবহার
+    const calculatedResult = calculateMatchResult(matchData);
 
-      const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
-      const squadCount = matchData.cricket.squads?.[chasingSquadKey]?.length || 11;
-      const maxWickets = getMaxWickets(squadCount);
-
-      if (matchData.cricket.currentInnings === 1 || !inn2 || (inn2.score === 0 && (!inn2.overs || inn2.overs === "0.0"))) {
-        calculatedResult = `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} (${inn1?.overs || "0.0"} ov) • Match Incomplete`;
-      } else {
-        if (inn2.score >= target) {
-          const wicketsLeft = Math.max(0, maxWickets - (inn2.wickets || 0));
-          calculatedResult = `${inn2Team} won by ${wicketsLeft} wicket${wicketsLeft > 1 ? "s" : ""}`;
-        } else {
-          const oversDec = oversToDecimal(inn2.overs);
-          const isInn2Finished = inn2.isCompleted || oversDec >= maxOvers || (inn2.wickets || 0) >= maxWickets;
-
-          if (isInn2Finished) {
-            const runDiff = Math.max(0, target - 1 - (inn2?.score || 0));
-            if (runDiff > 0) {
-              calculatedResult = `${inn1Team} won by ${runDiff} run${runDiff > 1 ? "s" : ""}`;
-            } else if (runDiff === 0) {
-              calculatedResult = "Match Tied (Super Over)";
-            }
-          } else {
-            calculatedResult = `Match Ended: ${inn2Team} needed ${Math.max(0, target - inn2.score)} runs`;
-          }
-        }
-      }
-    } else if (matchData.football) {
-      const scA = matchData.football.scoreA || 0;
-      const scB = matchData.football.scoreB || 0;
-      if (scA > scB) calculatedResult = `${matchData.meta.teamA} won the match`;
-      else if (scB > scA) calculatedResult = `${matchData.meta.teamB} won the match`;
-      else calculatedResult = "Match Draw";
-    }
+    // 🛡️ Firestore 1MB সাইজ রক্ষা: অপ্রয়োজনীয় actionLogs ও প্রেজেন্স ছাঁটাই
+    const sanitizedSnapshot = { ...matchData };
+    delete sanitizedSnapshot.actionLogs;
+    delete (sanitizedSnapshot as any).match_actionLogs;
 
     const archiveData = {
       sport: matchData.meta?.sport || "cricket",
-      createdBy: matchData.meta?.createdBy || adminUid,
+      createdBy: adminUid,
       teamA: matchData.meta?.teamA || "Team A",
       teamB: matchData.meta?.teamB || "Team B",
       tournament: matchData.meta?.tournament || "Local Tournament",
@@ -116,12 +81,12 @@ export async function POST(request: Request) {
       finalResult: calculatedResult,
       completedAt: Date.now(),
       fullSnapshot: {
-        ...matchData,
+        ...sanitizedSnapshot,
         meta: { 
           ...matchData.meta, 
           status: "completed", 
           finalResult: calculatedResult,
-          createdBy: matchData.meta?.createdBy || adminUid,
+          createdBy: adminUid,
           completedAt: Date.now(),
         },
         cricket: matchData.cricket || null,
@@ -129,9 +94,10 @@ export async function POST(request: Request) {
       },
     };
 
-    const docRef = await adminFirestore.collection("matches_history").add(archiveData);
+    // 🛡️ Fix: .add() এর বদলে সরাসরি matchId দিয়ে ডকুমেন্ট সেট করা (লিংক কখনো ভাঙবে না)
+    await adminFirestore.collection("matches_history").doc(matchId).set(archiveData);
 
-    // 🛡️ আইসোলেটেড ক্লিনআপ (অন্য অ্যাক্টিভ ম্যাচ মুছে যাবে না)
+    // RTDB থেকে লাইভ নোড ক্লিনআপ
     const atomicUpdates: Record<string, null> = {
       [`matches/${matchId}`]: null,
       [`match_actionLogs/${matchId}`]: null,
@@ -142,13 +108,13 @@ export async function POST(request: Request) {
     revalidatePath("/", "page");
     revalidatePath("/live", "page");
     revalidatePath("/match-history", "page");
-    revalidatePath(`/match-history/${docRef.id}`, "page");
+    revalidatePath(`/match-history/${matchId}`, "page");
     revalidatePath("/admin", "page");
 
     return NextResponse.json({
       success: true,
       message: "Match finalized and archived successfully!",
-      archiveId: docRef.id,
+      archiveId: matchId,
     });
   } catch (error: any) {
     console.error("Error finalizing match:", error);

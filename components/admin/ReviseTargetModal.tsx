@@ -47,6 +47,17 @@ export default function ReviseTargetModal({
       return showToast("সঠিক ওভার সংখ্যা ইনপুট দিন।", "error");
     }
 
+    // 🛡️ Fix #17: স্যানিটি চেক - বল করা ওভারের চেয়ে কম ওভার সংশোধন করা যাবে না
+    const [ov, b] = (currentOvers || "0.0").split(".").map(Number);
+    const minPossibleOvers = (b || 0) > 0 ? (ov || 0) + 1 : (ov || 0);
+
+    if (Number(maxOvers) < minPossibleOvers) {
+      return showToast(
+        `সংশোধিত ওভার সংখ্যা ইতোমধ্যে বল করা ওভারের (${currentOvers} ov) চেয়ে কম হতে পারবে না।`,
+        "error"
+      );
+    }
+
     if (isSecondInnings && (!target || target <= 0)) {
       return showToast("২য় ইনিংসের জন্য সংশোধিত টার্গেট দিন।", "error");
     }

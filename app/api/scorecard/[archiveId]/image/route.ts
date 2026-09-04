@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 import { adminFirestore } from "@/lib/firebase/admin";
 import { NextRequest } from "next/server";
 import React from "react";
-import { getMaxWickets, oversToDecimal } from "@/lib/utils";
+import { calculateMatchResult } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -30,9 +30,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
     const cricketSnap = match.cricket || match.fullSnapshot?.cricket;
     const footballSnap = match.football || match.fullSnapshot?.football;
 
-    // 🛡️ ১. ডাটাবেসে সংরক্ষিত অফিসিয়াল রেজাল্ট অগ্রাধিকার পাবে
-    const savedResult = match.finalResult || match.fullSnapshot?.meta?.finalResult;
-    let resultText = savedResult && savedResult !== "Match Completed" ? savedResult : "MATCH COMPLETED";
+    // 🛡️ Fix #9: সেন্ট্রাল রেজাল্ট ইঞ্জিন ব্যবহার
+    const resultText = calculateMatchResult(match.fullSnapshot || match);
 
     let inn1Score = "0/0", inn1Overs = "0.0", inn1Team = teamA;
     let inn2Score = "0/0", inn2Overs = "0.0", inn2Team = teamB;
@@ -41,7 +40,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
     if (isCricket && cricketSnap) {
       const inn1 = cricketSnap.innings1;
       const inn2 = cricketSnap.innings2;
-      const maxOvers = cricketSnap.maxOvers || 20;
 
       inn1Team = inn1?.battingTeam === "teamA" ? teamA : teamB;
       inn2Team = inn1?.battingTeam === "teamA" ? teamB : teamA;
@@ -51,46 +49,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
 
       inn2Score = inn2 ? `${inn2.score || 0}/${inn2.wickets || 0}` : "DNB";
       inn2Overs = inn2?.overs || "0.0";
-
-      // 🛡️ DLS সংশোধিত টার্গেট সাপোর্ট
-      const targetScore = inn2?.target || (inn1?.score || 0) + 1;
-      const chasingSquadKey = inn2?.battingTeam || (inn1?.battingTeam === "teamA" ? "teamB" : "teamA");
-      const squadCount = cricketSnap.squads?.[chasingSquadKey]?.length || 11;
-      const maxWickets = getMaxWickets(squadCount);
-
-      if (!savedResult || savedResult === "Match Completed") {
-        if (!inn2 || (!inn2.overs && inn2.score === 0) || inn2.overs === "0.0") {
-          resultText = `${inn1Team} scored ${inn1?.score || 0}/${inn1?.wickets || 0} (${inn1?.overs || "0.0"} ov) • Match Incomplete`;
-        } else if (inn2.score >= targetScore) {
-          const wicketsLeft = Math.max(0, maxWickets - (inn2.wickets || 0));
-          resultText = `🏆 ${inn2Team.toUpperCase()} WON BY ${wicketsLeft} WICKET${wicketsLeft > 1 ? "S" : ""}`;
-        } else {
-          const oversDec = oversToDecimal(inn2.overs);
-          const isInn2Finished = inn2.isCompleted || oversDec >= maxOvers || (inn2.wickets || 0) >= maxWickets;
-
-          if (isInn2Finished) {
-            const runMargin = Math.max(0, targetScore - 1 - (inn2?.score || 0));
-            if (runMargin > 0) {
-              resultText = `🏆 ${inn1Team.toUpperCase()} WON BY ${runMargin} RUN${runMargin > 1 ? "S" : ""}`;
-            } else if (runMargin === 0) {
-              resultText = "MATCH TIED (SUPER OVER)";
-            }
-          }
-        }
-      }
     } else if (footballSnap) {
       footballScoreA = footballSnap.scoreA || 0;
       footballScoreB = footballSnap.scoreB || 0;
-      if (!savedResult || savedResult === "Match Completed") {
-        if (footballScoreA > footballScoreB) {
-          resultText = `🏆 ${teamA.toUpperCase()} WON THE MATCH`;
-        } else if (footballScoreB > footballScoreA) {
-          resultText = `🏆 ${teamB.toUpperCase()} WON THE MATCH`;
-        } else {
-          resultText = "MATCH DRAW";
-        }
-      }
     }
+
+    const isMatchCompleted = match.finalResult && match.finalResult !== "Match Completed";
+    const cacheHeader = isMatchCompleted
+      ? "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable"
+      : "public, max-age=60, s-maxage=60, stale-while-revalidate=300";
 
     return new ImageResponse(
       React.createElement(
@@ -109,7 +76,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
           },
         },
         [
-          // Top Header
           React.createElement(
             "div",
             { key: "header", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
@@ -131,7 +97,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
             ]
           ),
 
-          // Scoreboard Card
           React.createElement(
             "div",
             {
@@ -210,7 +175,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
                 ]
           ),
 
-          // Result Banner
           React.createElement(
             "div",
             {
@@ -246,7 +210,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ arch
         width: 1200,
         height: 630,
         headers: {
-          "Cache-Control": "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable",
+          "Cache-Control": cacheHeader,
         },
       }
     );
