@@ -10,7 +10,7 @@ export function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith("/admin");
   const isProtectedApiRoute = pathname.startsWith("/api/match/finalize");
 
-  // ১. সংরক্ষিত API রুটের জন্য সেশন/হেডার ভ্যালিডেশন
+  // ১. সংরক্ষিত API রুট গার্ড
   if (isProtectedApiRoute) {
     const authHeader = request.headers.get("authorization");
     if (!token && !authHeader) {
@@ -22,9 +22,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ২. অ্যাডমিন ওয়েব রুট গার্ড (/admin/*)
+  // ২. অ্যাডমিন রুট গার্ড
   if (isAdminRoute) {
-    // লগইন ছাড়া কোনো অ্যাডমিন রুটে প্রবেশের চেষ্টা
+    // লগইন ছাড়া অন্য অ্যাডমিন রুটে প্রবেশের চেষ্টা
     if (!token && !isLoginPage) {
       const loginUrl = new URL("/admin/login", request.url);
       if (pathname !== "/admin") {
@@ -33,12 +33,8 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // অলরেডি ভ্যালিড সেশন কুকি নিয়ে লগইন পেজে ঢুকলে ড্যাশবোর্ডে রিডাইরেক্ট
-    if (token && isLoginPage) {
-      const callbackUrl = request.nextUrl.searchParams.get("callbackUrl");
-      const targetUrl = callbackUrl && callbackUrl.startsWith("/admin") ? callbackUrl : "/admin";
-      return NextResponse.redirect(new URL(targetUrl, request.url));
-    }
+    // 🛡️ ফিক্সড: ক্লায়েন্ট যদি নিজে থেকে /admin/login এ যেতে চায়, মিডলওয়্যার জোর করে আটকে দেবে না
+    // এতে জম্বি সেশন বাউন্স ট্র্যাপ চিরতরে বন্ধ হবে
   }
 
   return NextResponse.next();

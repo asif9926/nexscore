@@ -15,9 +15,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="relative min-h-screen bg-ink font-sans text-fg transition-colors duration-200 selection:bg-electric/30">
-      
-      {/* Ambient Background Glow (Sunlight মোডে সফট থাকবে) */}
+    <div className="relative min-h-screen bg-ink font-sans text-fg selection:bg-electric/30">
+      {/* Ambient Glow */}
       <div className="pointer-events-none fixed inset-0 z-0 hidden opacity-40 sm:block">
         <div className="absolute left-1/2 top-[-10%] h-96 w-full max-w-7xl -translate-x-1/2 rounded-full bg-electric/10 blur-[120px]" />
       </div>

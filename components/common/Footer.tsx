@@ -34,16 +34,17 @@ export default function Footer() {
           {/* Right: Admin & Developer Info */}
           <div className="flex flex-col items-center gap-4 md:items-end">
             
-            {/* 🛡️ ফিক্সড: <a> ট্যাগ ব্যবহারের ফলে কোনো প্রিফেচ হ্যাং বা রাউটার লক হবে না */}
-            <a
+            {/* 🛡️ prefetch={false} ব্যাকগ্রাউন্ড টোকেন ডিসিঙ্ক্রোনাইজেশন রোধ করে */}
+            <Link
               href="/admin"
+              prefetch={false}
               className="group flex items-center gap-2 text-sm font-semibold text-fg/80 transition-colors hover:text-fg"
             >
               <ShieldCheck size={18} className="text-electric group-hover:text-electric/80" />
               <span className="underline decoration-fg-faint underline-offset-4 group-hover:decoration-electric">
                 Admin Control Portal
               </span>
-            </a>
+            </Link>
 
             {/* Developer Card */}
             <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-border/50 bg-panel/40 p-4 shadow-sm backdrop-blur-md md:items-end">

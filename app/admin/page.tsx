@@ -2,8 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { ref, get, set } from "firebase/database";
+import { ref, get, set, goOnline } from "firebase/database";
 import { rtdb, auth } from "@/lib/firebase/client";
 import { onAuthStateChanged } from "firebase/auth";
 import { 
@@ -16,15 +15,32 @@ import {
   Eye, 
   Home, 
   RefreshCw,
-  UserCheck
+  UserCheck,
+  Loader2
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { deleteMatchAction } from "./actions";
 import { useToast } from "@/lib/context/ToastContext";
+
+function fetchWithTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("RTDB Request Timeout")), ms);
+    promise
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 export default function AdminDashboardHome() {
   const { showToast } = useToast();
 
+  const [authChecking, setAuthChecking] = useState(true);
   const [currentAdmin, setCurrentAdmin] = useState<any>(null);
   const [activeMatch, setActiveMatch] = useState<{ id: string; data: any } | null>(null);
   const [activeMatchLoading, setActiveMatchLoading] = useState(true);
@@ -33,68 +49,99 @@ export default function AdminDashboardHome() {
   const [fetchingHistory, setFetchingHistory] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+
   useEffect(() => {
+    isMountedRef.current = true;
+
+    try {
+      goOnline(rtdb);
+    } catch {}
+
     const unsub = onAuthStateChanged(auth, async (user) => {
-      setCurrentAdmin(user);
-      if (user) {
-        await checkMyActiveMatch(user.uid);
-        await loadMyHistory(user.uid);
-      } else {
-        setActiveMatchLoading(false);
-        setFetchingHistory(false);
+      if (!isMountedRef.current) return;
+
+      if (!user) {
+        // 🛡️ সেশন পাওয়া না গেলে স্টেল কুকি ক্লিয়ার করে ফ্রেশ লগইনে রিডাইরেক্ট
+        document.cookie = "AuthToken=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        window.location.href = "/admin/login";
+        return;
       }
+
+      setCurrentAdmin(user);
+      setAuthChecking(false);
+
+      try {
+        await user.getIdToken();
+      } catch {}
+
+      await Promise.allSettled([
+        checkMyActiveMatch(user.uid),
+        loadMyHistory(user.uid),
+      ]);
     });
-    return () => unsub();
+
+    return () => {
+      isMountedRef.current = false;
+      unsub();
+    };
   }, []);
 
-  // 🛡️ অ্যাডমিনের অ্যাক্টিভ ম্যাচ চেক ও ডেড-পয়েন্টার অটো-ক্লিনআপ
   const checkMyActiveMatch = async (uid: string) => {
     setActiveMatchLoading(true);
     try {
       const activeMatchRef = ref(rtdb, `admin_active_matches/${uid}`);
-      const activeMatchSnap = await get(activeMatchRef);
+      const activeMatchSnap = await fetchWithTimeout(get(activeMatchRef), 6000);
 
       if (activeMatchSnap.exists()) {
         const matchId = activeMatchSnap.val();
         if (matchId) {
-          const matchDataSnap = await get(ref(rtdb, `matches/${matchId}`));
+          const matchDataSnap = await fetchWithTimeout(get(ref(rtdb, `matches/${matchId}`)), 6000);
           if (matchDataSnap.exists() && matchDataSnap.val()?.meta?.status === "live") {
-            setActiveMatch({ id: matchId, data: matchDataSnap.val() });
+            if (isMountedRef.current) {
+              setActiveMatch({ id: matchId, data: matchDataSnap.val() });
+            }
           } else {
-            await set(activeMatchRef, null);
-            setActiveMatch(null);
+            set(activeMatchRef, null).catch(() => {});
+            if (isMountedRef.current) setActiveMatch(null);
           }
         } else {
-          setActiveMatch(null);
+          if (isMountedRef.current) setActiveMatch(null);
         }
       } else {
-        setActiveMatch(null);
+        if (isMountedRef.current) setActiveMatch(null);
       }
     } catch (e) {
-      console.error("Error loading active match:", e);
+      console.warn("Active match lookup notice:", e);
+      if (isMountedRef.current) setActiveMatch(null);
     } finally {
-      setActiveMatchLoading(false);
+      if (isMountedRef.current) setActiveMatchLoading(false);
     }
   };
 
   const loadMyHistory = async (uid?: string) => {
-    const targetUid = uid || currentAdmin?.uid;
-    if (!targetUid) return;
+    const targetUid = uid || currentAdmin?.uid || auth.currentUser?.uid;
+    if (!targetUid) {
+      setFetchingHistory(false);
+      return;
+    }
 
     setFetchingHistory(true);
     try {
       const res = await fetch(`/api/match/history?createdBy=${targetUid}`, { cache: "no-store" });
       if (!res.ok) throw new Error("Server Error while loading archives.");
       const data = await res.json();
-      if (data.success) {
-        setHistory(data.matches || []);
-      } else {
-        showToast(data.error || "Failed to load archived matches.", "error");
+      if (isMountedRef.current) {
+        if (data.success) {
+          setHistory(data.matches || []);
+        } else {
+          showToast(data.error || "Failed to load archived matches.", "error");
+        }
       }
     } catch (err: any) {
       console.error("History fetch error:", err);
     } finally {
-      setFetchingHistory(false);
+      if (isMountedRef.current) setFetchingHistory(false);
     }
   };
 
@@ -117,14 +164,26 @@ export default function AdminDashboardHome() {
     }
   };
 
+  // 🛡️ অথ ভ্যালিডেশন শেষ না হওয়া পর্যন্ত লোডার দেখাবে (ফাঁকা বাটন রেন্ডার বন্ধ)
+  if (authChecking) {
+    return (
+      <div className="flex min-h-[65vh] flex-col items-center justify-center gap-3">
+        <Loader2 size={32} className="animate-spin text-electric" />
+        <p className="text-xs font-bold uppercase tracking-wider text-fg-muted">
+          Verifying Admin Credentials...
+        </p>
+      </div>
+    );
+  }
+
   const isLive = Boolean(activeMatch);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 pb-24 pt-6">
+    <div className="space-y-8 pb-24 pt-2">
       {/* Header Info */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-electric/30 bg-electric/10 px-3 py-0.5 text-xs font-bold text-electric mb-2">
+          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-electric/30 bg-electric/10 px-3 py-0.5 text-xs font-bold text-electric">
             <UserCheck size={13} />
             <span>Logged in as: {currentAdmin?.email || "Admin"}</span>
           </div>
@@ -136,14 +195,12 @@ export default function AdminDashboardHome() {
           </p>
         </div>
 
-        <a href="/">
-          <button
-            type="button"
-            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-panel px-5 py-2.5 text-xs font-bold text-fg shadow-md hover:bg-panel-raised sm:w-auto"
-          >
-            <Home size={16} className="text-electric" /> View Public Home
-          </button>
-        </a>
+        <Link
+          href="/"
+          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-panel px-5 py-2.5 text-xs font-bold text-fg shadow-md transition-colors hover:bg-panel-raised sm:w-auto"
+        >
+          <Home size={16} className="text-electric" /> View Public Home
+        </Link>
       </div>
 
       {/* Main Action Cards */}
@@ -152,17 +209,20 @@ export default function AdminDashboardHome() {
         <Link 
           href="/admin/setup"
           onClick={(e) => {
+            if (activeMatchLoading) {
+              e.preventDefault();
+              return;
+            }
             if (isLive) {
               e.preventDefault();
               showToast("Your account already has an active live match! Please end it before starting another.", "error");
             }
           }}
-          className="group block"
+          className={`group block rounded-3xl border border-border bg-panel p-6 shadow-md transition-all hover:-translate-y-1 hover:border-electric/50 hover:shadow-xl active:scale-[0.98] sm:p-8 ${
+            activeMatchLoading ? "pointer-events-none opacity-60" : ""
+          }`}
         >
-          <motion.div 
-            whileHover={{ y: -4 }}
-            className="flex h-full flex-col justify-between rounded-3xl border border-border bg-panel p-6 shadow-md transition-colors group-hover:border-electric/50 sm:p-8"
-          >
+          <div className="flex h-full flex-col justify-between">
             <div>
               <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-electric/20 bg-electric/10">
                 <Trophy size={28} className="text-electric" />
@@ -175,67 +235,75 @@ export default function AdminDashboardHome() {
             <div className="flex items-center gap-2 text-xs font-bold text-electric">
               Setup Wizard <ArrowRight size={15} />
             </div>
-          </motion.div>
+          </div>
         </Link>
 
         {/* Card 2: Personal Control Room */}
         <Link 
           href={isLive ? `/admin/control/${activeMatch?.id}` : "#"} 
           onClick={(e) => {
+            if (activeMatchLoading) {
+              e.preventDefault();
+              return;
+            }
             if (!isLive) {
               e.preventDefault();
               showToast("No active live match found for your account. Please create one.", "info");
             }
           }}
-          className={`group block ${!isLive && !activeMatchLoading ? "opacity-75" : ""}`}
+          className={`group relative block overflow-hidden rounded-3xl border border-border bg-panel p-6 shadow-md transition-all hover:-translate-y-1 hover:border-crimson/50 hover:shadow-xl active:scale-[0.98] sm:p-8 ${
+            !isLive && !activeMatchLoading ? "opacity-75" : ""
+          } ${activeMatchLoading ? "pointer-events-none" : ""}`}
         >
-          <motion.div
-            whileHover={{ y: -5 }}
-            className="relative h-full overflow-hidden rounded-3xl border border-border bg-panel p-6 shadow-md transition-all group-hover:border-crimson/50 sm:p-8"
-          >
-            {isLive && <div className="absolute left-0 top-0 h-1 w-full bg-crimson" />}
-            <div className="mb-6 flex items-start justify-between">
-              <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${isLive ? "bg-crimson/15" : "bg-panel-raised"}`}>
-                <Radio size={28} className={isLive ? "text-crimson" : "text-fg-faint"} />
-              </div>
-              {isLive ? (
-                <span className="flex animate-pulse items-center gap-1.5 rounded-full border border-crimson/30 bg-crimson/20 px-2.5 py-1 text-[11px] font-bold uppercase text-crimson">
-                  <Activity size={12} /> Your Match is Live
-                </span>
-              ) : (
-                <span className="rounded-full bg-panel-raised px-2.5 py-1 text-[11px] font-bold uppercase text-fg-faint">
-                  No Active Match
-                </span>
-              )}
+          {isLive && <div className="absolute left-0 top-0 h-1.5 w-full bg-crimson" />}
+          <div className="mb-6 flex items-start justify-between">
+            <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${isLive ? "bg-crimson/15" : "bg-panel-raised"}`}>
+              <Radio size={28} className={isLive ? "text-crimson" : "text-fg-faint"} />
             </div>
-            <h2 className="mb-2 text-xl font-bold text-fg">Your Control Room</h2>
-            <p className="mb-6 text-xs text-fg-muted sm:text-sm">
-              {isLive 
-                ? `Scoring active for ${activeMatch?.data?.meta?.teamA} vs ${activeMatch?.data?.meta?.teamB}`
-                : "Manage scoring, wickets, and overlays for your on-air match."}
-            </p>
-            <div className={`flex items-center gap-2 text-xs font-bold ${isLive ? "text-crimson" : "text-fg-faint"}`}>
-              {isLive ? "Enter Control Room" : "No Live Match"} <ArrowRight size={15} />
-            </div>
-          </motion.div>
+            {activeMatchLoading ? (
+              <span className="flex items-center gap-1.5 rounded-full bg-panel-raised px-2.5 py-1 text-[11px] font-bold text-fg-muted">
+                <Loader2 size={12} className="animate-spin text-electric" /> Checking Match...
+              </span>
+            ) : isLive ? (
+              <span className="flex animate-pulse items-center gap-1.5 rounded-full border border-crimson/30 bg-crimson/20 px-2.5 py-1 text-[11px] font-bold uppercase text-crimson">
+                <Activity size={12} /> Your Match is Live
+              </span>
+            ) : (
+              <span className="rounded-full bg-panel-raised px-2.5 py-1 text-[11px] font-bold uppercase text-fg-faint">
+                No Active Match
+              </span>
+            )}
+          </div>
+          <h2 className="mb-2 text-xl font-bold text-fg">Your Control Room</h2>
+          <p className="mb-6 text-xs text-fg-muted sm:text-sm">
+            {activeMatchLoading
+              ? "Connecting to match state engine..."
+              : isLive 
+              ? `Scoring active for ${activeMatch?.data?.meta?.teamA} vs ${activeMatch?.data?.meta?.teamB}`
+              : "Manage scoring, wickets, and overlays for your on-air match."}
+          </p>
+          <div className={`flex items-center gap-2 text-xs font-bold ${isLive ? "text-crimson" : "text-fg-faint"}`}>
+            {activeMatchLoading ? "Checking..." : isLive ? "Enter Control Room" : "No Live Match"} <ArrowRight size={15} />
+          </div>
         </Link>
       </div>
 
-      {/* Archives Section (Only My Matches) */}
+      {/* Archives Section */}
       <div className="rounded-2xl border border-border bg-panel p-5 shadow-lg sm:p-6">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold text-fg sm:text-xl">
               <Calendar size={18} className="text-fg-muted" /> Your Completed Archives
             </h2>
-            <p className="text-[11px] text-fg-muted mt-0.5">
+            <p className="mt-0.5 text-[11px] text-fg-muted">
               Only matches created and finalized by your account are listed here.
             </p>
           </div>
           <button
+            type="button"
             onClick={() => loadMyHistory()}
             disabled={fetchingHistory}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-ink px-3 py-1.5 text-xs font-semibold text-fg-muted hover:text-fg"
+            className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-border bg-ink px-3.5 py-1.5 text-xs font-semibold text-fg-muted transition-colors hover:text-fg disabled:opacity-50"
           >
             <RefreshCw size={13} className={fetchingHistory ? "animate-spin" : ""} />
             <span>Refresh</span>
@@ -243,7 +311,10 @@ export default function AdminDashboardHome() {
         </div>
 
         {fetchingHistory ? (
-          <div className="animate-pulse py-10 text-center text-xs text-fg-faint">Loading your archives...</div>
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-xs text-fg-muted">
+            <Loader2 size={22} className="animate-spin text-electric" />
+            <span>Loading your archives...</span>
+          </div>
         ) : history.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-ink/50 py-10 text-center text-xs text-fg-faint">
             You have not finalized any matches yet. Matches you complete will appear here.
@@ -262,21 +333,24 @@ export default function AdminDashboardHome() {
                   <div className="text-base font-bold text-fg">
                     {match.teamA} vs {match.teamB}
                   </div>
-                  <div className="text-xs text-signal-gold font-medium mt-0.5">
+                  <div className="mt-0.5 text-xs font-medium text-signal-gold">
                     {match.finalResult}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2.5">
-                  <Link href={`/match-history/${match.id}`} target="_blank">
-                    <button className="flex min-h-[38px] items-center gap-1.5 rounded-lg bg-panel-raised px-3 py-1.5 text-xs font-bold text-fg-muted hover:text-fg">
-                      <Eye size={14} /> View Scorecard
-                    </button>
+                  <Link 
+                    href={`/match-history/${match.id}`} 
+                    target="_blank"
+                    className="flex min-h-[38px] items-center gap-1.5 rounded-lg bg-panel-raised px-3.5 py-1.5 text-xs font-bold text-fg-muted transition-colors hover:text-fg"
+                  >
+                    <Eye size={14} /> View Scorecard
                   </Link>
                   <button
+                    type="button"
                     onClick={() => handleDelete(match.id)}
                     disabled={deletingId === match.id}
-                    className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-crimson/20 bg-crimson/10 px-3 py-1.5 text-xs font-bold text-crimson hover:bg-crimson/20"
+                    className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-crimson/20 bg-crimson/10 px-3.5 py-1.5 text-xs font-bold text-crimson transition-colors hover:bg-crimson/20 disabled:opacity-50"
                   >
                     <Trash2 size={14} /> {deletingId === match.id ? "..." : "Delete"}
                   </button>
